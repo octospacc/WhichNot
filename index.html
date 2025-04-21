@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp-style Notes</title>
+    <style>
+        :root {
+            --whatsapp-green: #00a884;
+            --message-green: #d9fdd3;
+            --header-bg: #f0f2f5;
+        }
+
+        body, html {
+            margin: 0;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
+
+        .App {
+            display: flex;
+            height: 100vh;
+        }
+
+        .ChatList {
+            width: 30%;
+            background: white;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+        }
+
+        .ChatScreen {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #efeae2 /*url('https://static.whatsapp.net/rsrc.php/v4/y_/r/TPtFe9SpDSX.png')*/;
+        }
+
+        .ChatHeader {
+            background: var(--header-bg);
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .Messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .Message {
+            background: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            max-width: 70%;
+            word-break: break-word;
+        }
+
+        .Message.sent {
+            background: var(--message-green);
+            align-self: flex-end;
+        }
+
+        .Timestamp {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+
+        .SendBar {
+            display: flex;
+            gap: 0.5rem;
+            padding: 1rem;
+            background: white;
+            border-top: 1px solid #ddd;
+        }
+
+        .EditArea {
+            flex: 1;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 0.5rem;
+            resize: none;
+        }
+
+        .NotebookEmoji {
+            font-size: 1.5rem;
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+        }
+
+        .SettingsModal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 0 1rem rgba(0,0,0,0.1);
+        }
+
+        @media (max-width: 768px) {
+            .ChatList {
+                width: 100%;
+            }
+            
+            .ChatScreen {
+                display: none;
+            }
+            
+            .show-chat .ChatScreen {
+                display: flex;
+            }
+            
+            .show-chat .ChatList {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+<script type="module">
+    import { Component, h, render, createContext } from 'https://esm.sh/preact';
+    import { createRef } from 'https://esm.sh/preact/compat';
+    import { useContext, useState, useEffect, useCallback, useRef } from 'https://esm.sh/preact/hooks';
+    import htm from 'https://esm.sh/htm';
+    const html = htm.bind(h);
+    window.Component = Component;
+    window.createRef = createRef;
+    window.createContext = createContext;
+    window.useContext = useContext;
+    window.useState = useState;
+    window.useEffect = useEffect;
+    window.useCallback = useCallback;
+    window.useRef = useRef;
+    window.render = render;
+    window.html = html;
+    // for (const script of ["Launcher", "Settings", "SystemUI", "index3"]) {
+    //     document.body.appendChild(Object.assign(document.createElement('link'), { rel: "stylesheet", href: `${script}.css` }));
+    //     document.body.appendChild(Object.assign(document.createElement('script'), { src: `${script}.js` }));
+    // }
+</script>
+<script type="module">
+    import { h, render, createContext } from 'https://esm.sh/preact';
+    import { useContext, useState, useEffect, useCallback } from 'https://esm.sh/preact/hooks';
+    import htm from 'https://esm.sh/htm';
+
+    const AppContext = createContext();
+
+    function App() {
+        const [state, setState] = useState({
+            notebooks: [],
+            messages: {},
+            selectedNotebook: null,
+            editingMessage: null,
+            showSettings: false
+        });
+
+        const loadFromStorage = useCallback(() => {
+            const notebooks = JSON.parse(localStorage.getItem('notebooks') || '[]');
+            const messages = JSON.parse(localStorage.getItem('messages') || '{}');
+            setState(prev => ({ ...prev, notebooks, messages }));
+        }, []);
+
+        useEffect(() => { loadFromStorage(); }, []);
+
+        useEffect(() => {
+            localStorage.setItem('notebooks', JSON.stringify(state.notebooks));
+            localStorage.setItem('messages', JSON.stringify(state.messages));
+        }, [state.notebooks, state.messages]);
+
+        const createNotebook = useCallback(() => {
+            const newNotebook = {
+                id: Date.now(),
+                name: 'New Notebook',
+                emoji: '📒',
+                color: '#ffffff',
+                lastModified: Date.now(),
+                lastMessage: ''
+            };
+            
+            setState(prev => ({
+                ...prev,
+                notebooks: [...prev.notebooks, newNotebook],
+                messages: { ...prev.messages, [newNotebook.id]: [] }
+            }));
+        }, []);
+
+        const contextValue = { state, setState, createNotebook };
+
+        return html`
+            <${AppContext.Provider} value=${contextValue}>
+                <div class="App ${state.selectedNotebook ? 'show-chat' : ''}">
+                    <${ChatList} />
+                    <${ChatScreen} />
+                    ${state.showSettings && html`<${SettingsModal} />`}
+                </div>
+            <//>
+        `;
+    }
+
+    function ChatList() {
+        const { state, setState, createNotebook } = useContext(AppContext);
+        
+        return html`
+            <div class="ChatList">
+                <button onClick=${createNotebook}>+ New Notebook</button>
+                ${state.notebooks.sort((a, b) => b.lastModified - a.lastModified).map(notebook => html`
+                    <div class="ChatSlip" onClick=${() => setState(prev => ({ ...prev, selectedNotebook: notebook.id }))}>
+                        <div class="NotebookEmoji" style=${{ background: notebook.color }}>
+                            ${notebook.emoji}
+                        </div>
+                        <div>
+                            <h3>${notebook.name}</h3>
+                            <p>${notebook.lastMessage || 'No messages'}</p>
+                        </div>
+                    </div>
+                `)}
+            </div>
+        `;
+    }
+
+    function ChatScreen() {
+        const { state, setState } = useContext(AppContext);
+        const inputRef = useRef();
+        const notebook = state.notebooks.find(n => n.id === state.selectedNotebook);
+        const messages = state.messages[state.selectedNotebook] || [];
+
+        const sendMessage = useCallback(() => {
+            const content = inputRef.current.value.trim();
+            if (!content) return;
+
+            setState(prev => {
+                const newMessages = state.editingMessage !== null 
+                    ? prev.messages[prev.selectedNotebook].map((msg, idx) =>
+                        idx === state.editingMessage ? { ...msg, content, edited: true } : msg
+                      )
+                    : [...(prev.messages[prev.selectedNotebook] || []), {
+                        content,
+                        timestamp: Date.now(),
+                        edited: false
+                    }];
+
+                const updatedNotebooks = prev.notebooks.map(n => 
+                    n.id === prev.selectedNotebook ? { 
+                        ...n, 
+                        lastModified: Date.now(),
+                        lastMessage: content 
+                    } : n
+                );
+
+                return {
+                    ...prev,
+                    messages: { ...prev.messages, [prev.selectedNotebook]: newMessages },
+                    notebooks: updatedNotebooks,
+                    editingMessage: null
+                };
+            });
+
+            inputRef.current.value = '';
+        }, [state.selectedNotebook, state.editingMessage]);
+
+        return html`
+            <div class="ChatScreen">
+                <div class="ChatHeader">
+                    <button onClick=${() => setState(prev => ({ ...prev, selectedNotebook: null }))}>←</button>
+                    <div class="NotebookEmoji" style=${{ background: notebook?.color }}>${notebook?.emoji}</div>
+                    <h3>${notebook?.name}</h3>
+                    <button onClick=${() => setState(prev => ({ ...prev, showSettings: true }))}>⚙️</button>
+                </div>
+                
+                <div class="Messages">
+                    ${messages.map((msg, index) => html`
+                        <div class="Message" onClick=${() => setState(prev => ({ ...prev, editingMessage: index }))}>
+                            ${msg.content}
+                            <div class="Timestamp">
+                                ${new Date(msg.timestamp).toLocaleString()}
+                                ${msg.edited ? ' (edited)' : ''}
+                            </div>
+                        </div>
+                    `)}
+                </div>
+
+                <div class="SendBar">
+                    <textarea 
+                        ref=${inputRef}
+                        class="EditArea"
+                        value=${state.editingMessage !== null ? messages[state.editingMessage]?.content : ''}
+                        onKeyPress=${e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                    />
+                    <button onClick=${sendMessage}>
+                        ${state.editingMessage !== null ? 'Save' : 'Send'}
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    function SettingsModal() {
+        const { state, setState } = useContext(AppContext);
+        const notebook = state.notebooks.find(n => n.id === state.selectedNotebook);
+        const [form, setForm] = useState({ ...notebook });
+
+        const saveSettings = useCallback(() => {
+            setState(prev => ({
+                ...prev,
+                notebooks: prev.notebooks.map(n => n.id === notebook.id ? form : n),
+                showSettings: false
+            }));
+        }, [form]);
+
+        const deleteNotebook = useCallback(() => {
+            if (confirm('Delete this notebook?')) {
+                setState(prev => ({
+                    ...prev,
+                    notebooks: prev.notebooks.filter(n => n.id !== notebook.id),
+                    messages: { ...prev.messages, [notebook.id]: undefined },
+                    selectedNotebook: null,
+                    showSettings: false
+                }));
+            }
+        }, [notebook]);
+
+        return html`
+            <div class="SettingsModal">
+                <h3>Settings</h3>
+                <label>
+                    Name: 
+                    <input value=${form.name} onChange=${e => setForm(prev => ({ ...prev, name: e.target.value }))} />
+                </label>
+                <label>
+                    Emoji: 
+                    <input value=${form.emoji} maxLength="2" 
+                        onChange=${e => setForm(prev => ({ ...prev, emoji: e.target.value }))} />
+                </label>
+                <label>
+                    Color: 
+                    <input type="color" value=${form.color} 
+                        onChange=${e => setForm(prev => ({ ...prev, color: e.target.value }))} />
+                </label>
+                <button onClick=${saveSettings}>Save</button>
+                <button onClick=${deleteNotebook} style=${{ color: 'red' }}>Delete</button>
+                <button onClick=${() => setState(prev => ({ ...prev, showSettings: false }))}>Close</button>
+            </div>
+        `;
+    }
+
+    render(html`<${App} />`, document.body);
+</script>
+</body>
+</html>
