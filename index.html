@@ -1,361 +1,1899 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp-style Notes</title>
-    <style>
-        :root {
-            --whatsapp-green: #00a884;
-            --message-green: #d9fdd3;
-            --header-bg: #f0f2f5;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WhatsApp‑style Notes</title>
+  <style>
+    :root {
+      --whatsapp-green: #00a884;
+      --header-bg: #f0f2f5;
+    }
+    body, html {
+      margin: 0; height: 100%;
+      font-family: Arial, sans-serif;
+    }
+    .App { display: flex; height: 100vh; }
 
-        body, html {
-            margin: 0;
-            height: 100%;
-            font-family: Arial, sans-serif;
-        }
+    /* Chat list */
+    .ChatList {
+      width: 30%; background: white;
+      border-right: 1px solid #ddd; overflow-y: auto;
+    }
+    .ChatList-header {
+      display: flex; justify-content: space-between;
+      align-items: center; padding: 0.75rem 1rem;
+      border-bottom: 1px solid #ddd;
+    }
+    .ChatList-header button {
+      background: none; border: none;
+      font-size: 1.25rem; cursor: pointer;
+    }
+    .NotebookButton {
+      width: 100%; padding: 0.75rem 1rem;
+      background: none; border: none;
+      cursor: pointer; text-align: left;
+    }
+    .NotebookButton:hover { background: #f5f5f5; }
+    .NotebookTitle {
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .NotebookEmoji {
+      width: 1.5rem; height: 1.5rem;
+      border-radius: 50%; display: flex;
+      align-items: center; justify-content: center;
+      font-size: 1rem;
+    }
+    .NotebookName { margin: 0; font-size: 1rem; }
+    .NotebookDescription {
+      font-size: 0.875rem; color: #555; margin: 0.25rem 0 0 2rem;
+    }
+    .NotebookPreview {
+      font-size: 0.875rem; color: #666;
+      margin: 0.25rem 0 0 2rem;
+    }
 
-        .App {
-            display: flex;
-            height: 100vh;
-        }
+    /* Chat screen */
+    .ChatScreen {
+      flex: 1; display: none; flex-direction: column;
+      background: #efeae2;
+    }
+    .App.show-chat .ChatScreen { display: flex; }
+    .ChatHeader {
+      background: var(--header-bg); padding: 0.5rem;
+      display: flex; align-items: center; gap: 0.5rem;
+      border-bottom: 1px solid #ddd; cursor: pointer;
+    }
+    .ChatHeader h3 {
+      margin: 0; flex: 1; font-size: 1rem;
+    }
+    .BackButton, .SearchButton {
+      font-size: 1.5rem; padding: 0.25rem;
+      background: none; border: none; cursor: pointer;
+    }
 
-        .ChatList {
-            width: 30%;
-            background: white;
-            border-right: 1px solid #ddd;
-            overflow-y: auto;
-        }
+    .Messages {
+      flex: 1; overflow-y: auto; padding: 1rem;
+      display: flex; flex-direction: column; gap: 0.5rem;
+    }
+    .Message {
+      background: white; padding: 0.5rem 1rem;
+      border-radius: 0.5rem; max-width: 70%;
+      word-break: break-word; margin: 0.5rem auto;
+      position: relative;
+    }
+    .Message .reactions {
+      display: flex; gap: 0.25rem; margin-top: 0.25rem;
+    }
+    .Message .reactions button {
+      background: #f5f5f5; border: none; border-radius: 0.25rem;
+      padding: 0 0.5rem; cursor: pointer;
+    }
+    .AddReactionBtn {
+      font-size: 0.9rem; background: none; border: none; cursor: pointer;
+      color: var(--whatsapp-green);
+    }
+    .ReactionInput {
+      width: 2rem; padding: 0.1rem; font-size: 1rem;
+    }
+    .Timestamp {
+      font-size: 0.75rem; color: #666;
+      margin-top: 0.25rem; text-align: right;
+    }
+    .SendBar {
+      display: flex; gap: 0.5rem; padding: 1rem;
+      background: white; border-top: 1px solid #ddd;
+      flex-direction: column;
+    }
+    .ReplyPreview {
+      background: #f5f5f5; padding: 0.5rem;
+      border-radius: 0.25rem; display: flex;
+      justify-content: space-between; align-items: center;
+    }
+    .EditArea {
+      flex: 1; padding: 0.5rem;
+      border: 1px solid #ddd; border-radius: 0.5rem;
+      resize: none;
+    }
 
-        .ChatScreen {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: #efeae2 /*url('https://static.whatsapp.net/rsrc.php/v4/y_/r/TPtFe9SpDSX.png')*/;
-        }
+    .ContextMenu {
+      position: fixed; background: white;
+      border: 1px solid #ddd; border-radius: 0.25rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      z-index: 1000; min-width: 140px;
+    }
+    .ContextMenuItem {
+      padding: 0.5rem 1rem; cursor: pointer;
+    }
+    .ContextMenuItem:hover { background: #f5f5f5; }
 
-        .ChatHeader {
-            background: var(--header-bg);
-            padding: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            border-bottom: 1px solid #ddd;
-        }
+    .DateTimeModal, .SearchModal, .AppSettingsModal,
+    .CreateModal, .CrossReplyModal {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      background: white; padding: 2rem;
+      border-radius: 0.5rem; box-shadow: 0 0 1rem rgba(0,0,0,0.1);
+      max-height: 80vh; overflow-y: auto;
+      width: 90%; max-width: 400px; z-index: 1001;
+    }
+    .SearchModal input, .AppSettingsModal textarea,
+    .CreateModal input {
+      width: 100%; margin: 0.5rem 0;
+      padding: 0.5rem; border: 1px solid #ddd;
+      border-radius: 0.25rem;
+    }
+    .SearchResult {
+      padding: 0.5rem 0; border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+    .SearchResult:hover { background: #f9f9f9; }
 
-        .Messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
+    .ReplyIndicator {
+      border-left: 3px solid var(--whatsapp-green);
+      padding-left: 0.5rem; margin-bottom: 0.5rem;
+      color: #666; font-size: 0.9em; cursor: pointer;
+    }
 
-        .Message {
-            background: white;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            max-width: 70%;
-            word-break: break-word;
-        }
-
-        .Message.sent {
-            background: var(--message-green);
-            align-self: flex-end;
-        }
-
-        .Timestamp {
-            font-size: 0.75rem;
-            color: #666;
-            margin-top: 0.25rem;
-        }
-
-        .SendBar {
-            display: flex;
-            gap: 0.5rem;
-            padding: 1rem;
-            background: white;
-            border-top: 1px solid #ddd;
-        }
-
-        .EditArea {
-            flex: 1;
-            padding: 0.5rem;
-            border: 1px solid #ddd;
-            border-radius: 0.5rem;
-            resize: none;
-        }
-
-        .NotebookEmoji {
-            font-size: 1.5rem;
-            width: 2.5rem;
-            height: 2.5rem;
-            border-radius: 50%;
-            display: grid;
-            place-items: center;
-        }
-
-        .SettingsModal {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 2rem;
-            border-radius: 0.5rem;
-            box-shadow: 0 0 1rem rgba(0,0,0,0.1);
-        }
-
-        @media (max-width: 768px) {
-            .ChatList {
-                width: 100%;
-            }
-            
-            .ChatScreen {
-                display: none;
-            }
-            
-            .show-chat .ChatScreen {
-                display: flex;
-            }
-            
-            .show-chat .ChatList {
-                display: none;
-            }
-        }
-    </style>
+    @media (max-width: 768px) {
+      .ChatList { width: 100%; }
+      .ChatScreen { width: 100%; display: none; }
+      .App.show-chat .ChatList { display: none; }
+      .App.show-chat .ChatScreen { display: flex; }
+    }
+  </style>
 </head>
-<body>
-<script type="module">
-    import { Component, h, render, createContext } from 'https://esm.sh/preact';
-    import { createRef } from 'https://esm.sh/preact/compat';
-    import { useContext, useState, useEffect, useCallback, useRef } from 'https://esm.sh/preact/hooks';
-    import htm from 'https://esm.sh/htm';
-    const html = htm.bind(h);
-    window.Component = Component;
-    window.createRef = createRef;
-    window.createContext = createContext;
-    window.useContext = useContext;
-    window.useState = useState;
-    window.useEffect = useEffect;
-    window.useCallback = useCallback;
-    window.useRef = useRef;
-    window.render = render;
-    window.html = html;
+<body> -->
+<!-- <script type="module">
+    // import { Component, h, render, createContext } from 'https://esm.sh/preact';
+    // import { createRef } from 'https://esm.sh/preact/compat';
+    // import { useContext, useState, useEffect, useCallback, useRef } from 'https://esm.sh/preact/hooks';
+    // import htm from 'https://esm.sh/htm';
+    // const html = htm.bind(h);
+    // window.Component = Component;
+    // window.createRef = createRef;
+    // window.createContext = createContext;
+    // window.useContext = useContext;
+    // window.useState = useState;
+    // window.useEffect = useEffect;
+    // window.useCallback = useCallback;
+    // window.useRef = useRef;
+    // window.render = render;
+    // window.html = html;
     // for (const script of ["Launcher", "Settings", "SystemUI", "index3"]) {
     //     document.body.appendChild(Object.assign(document.createElement('link'), { rel: "stylesheet", href: `${script}.css` }));
     //     document.body.appendChild(Object.assign(document.createElement('script'), { src: `${script}.js` }));
     // }
-</script>
-<script type="module">
-    import { h, render, createContext } from 'https://esm.sh/preact';
-    import { useContext, useState, useEffect, useCallback } from 'https://esm.sh/preact/hooks';
-    import htm from 'https://esm.sh/htm';
+</script> -->
+<!-- <script type="module">
+import { h, render, createContext } from 'https://esm.sh/preact';
+import { useState, useEffect, useCallback, useRef, useContext } from 'https://esm.sh/preact/hooks';
+import htm from 'https://esm.sh/htm';
+const html = htm.bind(h);
+const AppContext = createContext();
 
-    const AppContext = createContext();
+const EMOJIS = ['📒','📓','📔','📕','📖','📗','📘','📙','📚','✏️','📝'];
+const randomEmoji = ()=>EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
+const randomColor = ()=>'#'+Math.floor(Math.random()*0xFFFFFF).toString(16).padStart(6,'0');
+const genUUID = ()=>crypto.randomUUID();//?.()||'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>((c==='x'?Math.random():Math.random()*0.4+0.6)|0).toString(16));
 
-    function App() {
-        const [state, setState] = useState({
-            notebooks: [],
-            messages: {},
-            selectedNotebook: null,
-            editingMessage: null,
-            showSettings: false
+// simple linkify: wrap URLs in <a>
+const linkify = text => {
+  const urlRegex = /(\bhttps?:\/\/[^\s]+)/g;
+  return text.replace(urlRegex, '<a href="$1" target="_blank">$1</a>');
+};
+
+function App(){
+  const [state, setState] = useState({
+    notebooks: [],
+    messages: {},
+    selectedNotebook: null,
+    editingMessage: null,
+    showSettings: false,
+    showAppSettings: false,
+    createModal: false,
+    crossReplyModal: false,
+    crossReplySource: null,
+    contextMenu: { visible:false, messageIndex:null, x:0, y:0 },
+    dateTimeModal: null,
+    replyingTo: null,
+    searchModal: { visible:false, global:false, query:'' },
+    scrollToMessage: null,
+    reactionInputFor: null
+  });
+
+  // load notebooks & messages
+  useEffect(()=>{
+    const raw = JSON.parse(localStorage.getItem('notebooks')||'[]');
+    const nbs = raw.map(n=>({
+      ...n,
+      nextMessageId: n.nextMessageId||1
+    }));
+    const msgs = {};
+    nbs.forEach(nb=>{
+      if(nb.sourceType==='local'){
+        msgs[nb.id] = JSON.parse(localStorage.getItem(`notebook-${nb.id}`)||'[]');
+      } else {
+        msgs[nb.id] = [];
+        fetch(`/${nb.id.slice(2)}/messages`)
+          .then(r=>r.json())
+          .then(data=>setState(s=>({
+            ...s,
+            messages:{...s.messages,[nb.id]:data.messages||data}
+          }))).catch(console.error);
+      }
+    });
+    setState(s=>({...s, notebooks:nbs, messages:msgs}));
+  },[]);
+
+  // persist notebooks
+  useEffect(()=>{
+    localStorage.setItem('notebooks', JSON.stringify(state.notebooks));
+  },[state.notebooks]);
+
+  // click-away closes context
+  useEffect(()=>{
+    const h=e=>{
+      if(state.contextMenu.visible){
+        const menu=document.querySelector('.ContextMenu');
+        if(menu&&!menu.contains(e.target)){
+          setState(s=>({...s,contextMenu:{...s.contextMenu,visible:false}}));
+        }
+      }
+    };
+    document.addEventListener('click',h);
+    return ()=>document.removeEventListener('click',h);
+  },[state.contextMenu.visible]);
+
+  const createLocalNotebook = useCallback(()=>{
+    const id=genUUID(), now=Date.now();
+    const nb={ id, name:'New Notebook', emoji:randomEmoji(),
+      color:randomColor(), created:now,
+      nextMessageId:1, sourceType:'local',
+      description:'', parseMode:'plaintext'
+    };
+    localStorage.setItem(`notebook-${id}`,'[]');
+    setState(s=>({
+      ...s,
+      notebooks:[...s.notebooks,nb],
+      messages:{...s.messages,[id]:[]},
+      createModal:false
+    }));
+  },[]);
+
+  const createRemoteNotebook = useCallback(()=>{
+    const rid=prompt('Enter remote notebook ID:');
+    if(!rid) return setState(s=>({...s,createModal:false}));
+    const id='//'+rid, now=Date.now();
+    const nb={ id, name:`Remote ${rid}`, emoji:randomEmoji(),
+      color:randomColor(), created:now,
+      nextMessageId:1, sourceType:'remote',
+      description:'', parseMode:'plaintext'
+    };
+    setState(s=>({
+      ...s,
+      notebooks:[...s.notebooks,nb],
+      messages:{...s.messages,[id]:[]},
+      createModal:false
+    }));
+    fetch(`/${rid}/messages`)
+      .then(r=>r.json())
+      .then(data=>setState(s=>({
+        ...s,
+        messages:{...s.messages,[id]:data.messages||data}
+      }))).catch(console.error);
+  },[]);
+
+  const openGlobalSearch=()=>setState(s=>({...s,searchModal:{visible:true,global:true,query:''}}));
+  const openNotebookSearch=()=>setState(s=>({...s,searchModal:{visible:true,global:false,query:''}}));
+
+  const persistMessages = useCallback((nbId,arr)=>{
+    const nb=state.notebooks.find(n=>n.id===nbId);
+    if(!nb) return;
+    if(nb.sourceType==='local'){
+      localStorage.setItem(`notebook-${nbId}`,JSON.stringify(arr));
+    } else {
+      fetch(`/${nbId.slice(2)}/messages`,{
+        method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(arr)
+      }).catch(console.error);
+    }
+  },[state.notebooks]);
+
+  return html`
+    <${AppContext.Provider} value=${{
+      state,setState,createLocalNotebook,createRemoteNotebook,
+      openGlobalSearch,openNotebookSearch,persistMessages
+    }}>
+      <div class="App ${state.selectedNotebook?'show-chat':''}">
+        <${ChatList}/>
+        <${ChatScreen}/>
+        ${state.createModal && html`<${CreateModal}/>`}
+        ${state.crossReplyModal && html`<${CrossReplyModal}/>`}
+        ${state.showSettings && html`<${SettingsModal}/>`}
+        ${state.showAppSettings && html`<${AppSettingsModal}/>`}
+        ${state.contextMenu.visible && html`<${ContextMenu}/>`}
+        ${state.dateTimeModal!==null && html`<${DateTimeModal}/>`}
+        ${state.searchModal.visible && html`<${SearchModal}/>`}
+      </div>
+    <//>
+  `;
+}
+
+function ChatList(){
+  const {state,setState,openGlobalSearch} = useContext(AppContext);
+  return html`
+    <div class="ChatList">
+      <div class="ChatList-header">
+        <button onClick=${()=>setState(s=>({...s,createModal:true}))}>＋</button>
+        <button onClick=${openGlobalSearch}>🔍</button>
+        <button onClick=${()=>setState(s=>({...s,showAppSettings:true}))}>⚙️</button>
+      </div>
+      ${state.notebooks
+        .sort((a,b)=>{
+          const la=(state.messages[a.id]||[]).map(m=>m.timestamp)
+            .concat(a.created||0).reduce((mx,v)=>v>mx?v:mx,0);
+          const lb=(state.messages[b.id]||[]).map(m=>m.timestamp)
+            .concat(b.created||0).reduce((mx,v)=>v>mx?v:mx,0);
+          return lb-la;
+        })
+        .map(nb=>html`
+          <button class="NotebookButton" key=${nb.id}
+                  onClick=${()=>setState(s=>({...s,selectedNotebook:nb.id}))}>
+            <div class="NotebookTitle">
+              <div class="NotebookEmoji" style=${{background:nb.color}}>${nb.emoji}</div>
+              <h4 class="NotebookName">${nb.name}</h4>
+            </div>
+            <div class="NotebookDescription">${nb.description||'<em>No description</em>'}</div>
+            <div class="NotebookPreview">
+              ${(()=>{
+                const arr=state.messages[nb.id]||[];
+                if(!arr.length) return 'No messages';
+                const last=[...arr].sort((x,y)=>y.timestamp-x.timestamp)[0];
+                return last.content;
+              })()}
+            </div>
+          </button>
+        `)}
+    </div>
+  `;
+}
+
+function ChatScreen(){
+  const {state,setState,openNotebookSearch,persistMessages} = useContext(AppContext);
+  const inputRef = useRef();
+  const nb = state.notebooks.find(n=>n.id===state.selectedNotebook);
+  let messages = state.messages[nb?.id]||[];
+  messages = [...messages].sort((a,b)=>a.timestamp-b.timestamp);
+
+  // scroll when needed
+  useEffect(()=>{
+    if(state.scrollToMessage!=null){
+      const el=document.querySelector(`[data-msg-id="${state.scrollToMessage}"]`);
+      if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+      setState(s=>({...s,scrollToMessage:null}));
+    }
+  },[state.scrollToMessage, state.selectedNotebook]);
+
+  const sendMessage = useCallback(()=>{
+    const content = inputRef.current.value.trim();
+    if(!content) return;
+    setState(prev=>{
+      const notebook = prev.notebooks.find(n=>n.id===prev.selectedNotebook);
+      const idNum = notebook.nextMessageId;
+      const newMsg = {
+        id:idNum, content, timestamp:Date.now(),
+        edited:false,
+        replyTo: prev.replyingTo && typeof prev.replyingTo==='object'
+          ? prev.replyingTo
+          : prev.replyingTo!=null
+            ? { notebookId: prev.selectedNotebook, id: prev.replyingTo }
+            : null,
+        reactions: []
+      };
+      let newArr, newNbs = prev.notebooks.map(n=>({...n}));
+      if(prev.editingMessage!=null){
+        newArr = prev.messages[prev.selectedNotebook].map(m=>
+          m.id===prev.messages[prev.selectedNotebook][prev.editingMessage].id
+            ?{...m,content,edited:true}:m);
+      } else {
+        newArr = [...(prev.messages[prev.selectedNotebook]||[]),newMsg];
+        newNbs = newNbs.map(n=>n.id===prev.selectedNotebook
+          ?{...n, nextMessageId:n.nextMessageId+1}:n);
+      }
+      persistMessages(prev.selectedNotebook,newArr);
+      return {
+        ...prev,
+        messages:{...prev.messages,[prev.selectedNotebook]:newArr},
+        notebooks:newNbs,
+        editingMessage:null, replyingTo:null
+      };
+    });
+    inputRef.current.value='';
+  },[persistMessages]);
+
+  const openContext = (e,idx)=>{
+    e.preventDefault();
+    setState(s=>({
+      ...s,
+      contextMenu:{ visible:true, messageIndex:idx, x:e.clientX, y:e.clientY }
+    }));
+  };
+
+  const addReaction = idx => {
+    setState(s=>({...s,reactionInputFor:idx}));
+  };
+  const confirmReaction = (idx,emoji) => {
+    setState(s=>{
+      const arr = s.messages[s.selectedNotebook]||[];
+      const msg = arr[idx];
+      if(!emoji) return {...s, reactionInputFor:null};
+      const newArr = arr.map((m,i)=> i===idx
+        ?{...m, reactions: m.reactions.includes(emoji) ? m.reactions : [...m.reactions,emoji]}
+        :m
+      );
+      persistMessages(s.selectedNotebook,newArr);
+      return {...s, messages:{...s.messages,[s.selectedNotebook]:newArr}, reactionInputFor:null};
+    });
+  };
+  const removeReaction = (idx,emoji) => {
+    setState(s=>{
+      const arr = s.messages[s.selectedNotebook]||[];
+      const newArr = arr.map((m,i)=> i===idx
+        ?{...m, reactions: m.reactions.filter(e=>e!==emoji)}
+        :m
+      );
+      persistMessages(s.selectedNotebook,newArr);
+      return {...s, messages:{...s.messages,[s.selectedNotebook]:newArr}};
+    });
+  };
+
+  if(!nb) return null;
+  return html`
+    <div class="ChatScreen">
+      <div class="ChatHeader" onClick=${()=>setState(s=>({...s,showSettings:true}))}>
+        <button class="BackButton"
+          onClick=${e=>{e.stopPropagation();setState(s=>({...s,selectedNotebook:null}));}}>
+          ←
+        </button>
+        <div class="NotebookEmoji" style=${{background:nb.color}}>${nb.emoji}</div>
+        <h3>${nb.name}</h3>
+        <button class="SearchButton"
+          onClick=${e=>{e.stopPropagation();openNotebookSearch();}}>
+          🔍
+        </button>
+      </div>
+      <div class="Messages">
+        ${messages.map((m,i)=>html`
+          <div class="Message" data-msg-id=${m.id}
+               onContextMenu=${e=>openContext(e,i)}
+               onTouchStart=${e=>{e.preventDefault();
+                 const t=e.touches[0];
+                 setState(s=>({...s,contextMenu:{visible:true,messageIndex:i,x:t.clientX,y:t.clientY}}));
+               }}>
+            ${m.replyTo && html`
+              <div class="ReplyIndicator"
+                   onClick=${()=>setState(s=>({...s,scrollToMessage:m.replyTo.id}))}>
+                Reply to ${m.replyTo.notebookId!==nb.id
+                  ? state.notebooks.find(n=>n.id===m.replyTo.notebookId)?.name
+                  : '…'}:
+                "${ (state.messages[m.replyTo.notebookId]||[])
+                    .find(x=>x.id===m.replyTo.id)?.content || '' }"
+              </div>
+            `}
+            <div dangerouslySetInnerHTML=${{__html:linkify(m.content)}}/>
+            <div class="reactions">
+              ${m.reactions.map(r=>html`
+                <button onClick=${()=>removeReaction(i,r)}>${r}</button>
+              `)}
+              ${state.reactionInputFor===i
+                ? html`<input class="ReactionInput" maxlength="2" autofocus
+                    onKeyPress=${e=> e.key==='Enter' && (confirmReaction(i,e.target.value), e.target.value='')} />`
+                : html`<button class="AddReactionBtn" onClick=${()=>addReaction(i)}>➕</button>`
+              }
+            </div>
+            <div class="Timestamp">
+              ${new Date(m.timestamp).toLocaleString()}${m.edited?' (edited)':''}
+            </div>
+          </div>
+        `)}
+      </div>
+      <div class="SendBar">
+        ${state.replyingTo && html`
+          <div class="ReplyPreview">
+            <span>Replying to: ${
+              (state.messages[ state.replyingTo.notebookId ]||[])
+                .find(x=>x.id===state.replyingTo.id)?.content || ''
+            }</span>
+            <button onClick=${()=>setState(s=>({...s,replyingTo:null}))}>×</button>
+          </div>
+        `}
+        <textarea ref=${inputRef} class="EditArea"
+          value=${state.editingMessage!=null
+            ? messages[state.editingMessage]?.content
+            : ''}
+          onKeyPress=${e=>e.key==='Enter'&&!e.shiftKey&&sendMessage()} />
+        <button onClick=${sendMessage}>
+          ${state.editingMessage!=null?'Save':'Send'}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function CreateModal(){
+  const { createLocalNotebook, createRemoteNotebook, setState } = useContext(AppContext);
+  return html`
+    <div class="CreateModal">
+      <h3>Create Notebook</h3>
+      <button onClick=${createLocalNotebook}>Local Notebook</button>
+      <button onClick=${createRemoteNotebook}>Remote Notebook</button>
+      <button onClick=${()=>setState(s=>({...s,createModal:false}))}>Cancel</button>
+    </div>
+  `;
+}
+
+function CrossReplyModal(){
+  const { state, setState } = useContext(AppContext);
+  const { crossReplySource } = state;
+  return html`
+    <div class="CrossReplyModal">
+      <h3>Reply in Another Notebook</h3>
+      ${state.notebooks.filter(n=>n.id!==crossReplySource.nb).map(n=>html`
+        <button onClick=${()=> {
+          setState(s=>({
+            ...s,
+            selectedNotebook: n.id,
+            replyingTo: { notebookId: crossReplySource.nb, id: crossReplySource.id },
+            crossReplyModal: false
+          }));
+        }}>${n.emoji} ${n.name}</button>
+      `)}
+      <button onClick=${()=>setState(s=>({...s,crossReplyModal:false}))}>Cancel</button>
+    </div>
+  `;
+}
+
+function ContextMenu(){
+  const { state, setState } = useContext(AppContext);
+  const { persistMessages } = useContext(AppContext);
+  const idx = state.contextMenu.messageIndex;
+  const arr = state.messages[state.selectedNotebook]||[];
+  const msg = arr[idx];
+  const handle = action=>{
+    let newArr;
+    switch(action){
+      case 'reply':
+        setState(s=>({...s,replyingTo:{ notebookId:s.selectedNotebook, id:msg.id },contextMenu:{visible:false}})); return;
+      case 'edit':
+        setState(s=>({...s,editingMessage:arr.findIndex(m=>m.id===msg.id),contextMenu:{visible:false}})); return;
+      case 'datetime':
+        setState(s=>({...s,dateTimeModal:arr.findIndex(m=>m.id===msg.id),contextMenu:{visible:false}})); return;
+      case 'delete':
+        newArr = arr.filter(m=>m.id!==msg.id);
+        persistMessages(state.selectedNotebook,newArr);
+        setState(s=>({
+          ...s,
+          messages:{...s.messages,[s.selectedNotebook]:newArr},
+          contextMenu:{visible:false}
+        })); return;
+      case 'cross-reply':
+        setState(s=>({
+          ...s,
+          contextMenu:{visible:false},
+          crossReplyModal:true,
+          crossReplySource:{ nb: state.selectedNotebook, id: msg.id }
+        })); return;
+    }
+  };
+  return html`
+    <div class="ContextMenu" style=${`left:${state.contextMenu.x}px;top:${state.contextMenu.y}px`}>
+      <div class="ContextMenuItem" onClick=${()=>handle('reply')}>Reply</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('cross-reply')}>Reply in Another Notebook</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('edit')}>Edit</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('datetime')}>Set Date/Time</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('delete')}>Delete</div>
+    </div>
+  `;
+}
+
+function DateTimeModal(){
+  const { state, setState, persistMessages } = useContext(AppContext);
+  const idx = state.dateTimeModal;
+  const arr = state.messages[state.selectedNotebook]||[];
+  const msg = arr[idx];
+  const [dt,setDt] = useState('');
+  useEffect(()=>{ if(msg) setDt(new Date(msg.timestamp).toISOString().slice(0,16)); },[msg]);
+  const save=()=>{
+    const ts=new Date(dt).getTime();
+    if(!isNaN(ts)){
+      const newArr = arr.map(m=>m.id===msg.id?{...m,timestamp:ts}:m);
+      persistMessages(state.selectedNotebook,newArr);
+      setState(s=>({...s,messages:{...s.messages,[s.selectedNotebook]:newArr},dateTimeModal:null}));
+    }
+  };
+  return html`
+    <div class="DateTimeModal">
+      <h3>Set Date/Time</h3>
+      <input type="datetime-local" value=${dt} onChange=${e=>setDt(e.target.value)}/>
+      <button onClick=${save}>Save</button>
+      <button onClick=${()=>setState(s=>({...s,dateTimeModal:null}))}>Cancel</button>
+    </div>
+  `;
+}
+
+function SettingsModal(){
+  const { state, setState } = useContext(AppContext);
+  const nb = state.notebooks.find(n=>n.id===state.selectedNotebook);
+  const [form,setForm] = useState({...nb});
+  const save=()=>{
+    setState(s=>({
+      ...s,
+      notebooks:s.notebooks.map(n=>n.id===nb.id?form:n),
+      showSettings:false
+    }));
+  };
+  const del=()=>{
+    if(confirm('Delete this notebook?')){
+      if(nb.sourceType==='local') localStorage.removeItem(`notebook-${nb.id}`);
+      setState(s=>({
+        ...s,
+        notebooks:s.notebooks.filter(n=>n.id!==nb.id),
+        messages:{...s.messages,[nb.id]:undefined},
+        selectedNotebook:null,
+        showSettings:false
+      }));
+    }
+  };
+  return html`
+    <div class="CreateModal">
+      <h3>Notebook Settings</h3>
+      <label>Name:<br/><input value=${form.name}
+             onChange=${e=>setForm(f=>({...f,name:e.target.value}))}/></label><br/>
+      <label>Emoji:<br/><input value=${form.emoji} maxLength="2"
+             onChange=${e=>setForm(f=>({...f,emoji:e.target.value}))}/></label><br/>
+      <label>Color:<br/><input type="color" value=${form.color}
+             onChange=${e=>setForm(f=>({...f,color:e.target.value}))}/></label><br/>
+      <label>Description:<br/><input value=${form.description}
+             onChange=${e=>setForm(f=>({...f,description:e.target.value}))}/></label><br/>
+      <label>Parse Mode:<br/>
+        <select value=${form.parseMode}
+                onChange=${e=>setForm(f=>({...f,parseMode:e.target.value}))}>
+          <option value="plaintext">Plaintext</option>
+        </select>
+      </label><br/><br/>
+      <button onClick=${save}>Save</button>
+      <button onClick=${del} style="color:red">Delete</button>
+      <button onClick=${()=>setState(s=>({...s,showSettings:false}))}>Close</button>
+    </div>
+  `;
+}
+
+function SearchModal(){
+  const { state, setState } = useContext(AppContext);
+  const { query, global } = state.searchModal;
+  const all = global
+    ? state.notebooks.flatMap(nb=>
+        (state.messages[nb.id]||[]).map(m=>({...m, notebook:nb})))
+    : (state.messages[state.selectedNotebook]||[])
+        .map(m=>({...m, notebook:state.notebooks.find(n=>n.id===state.selectedNotebook)}));
+  const results = all.filter(m=>m.content.toLowerCase().includes(query.toLowerCase()));
+  const select=(nbId,mId)=>{
+    setState(s=>({
+      ...s,
+      selectedNotebook: nbId,
+      searchModal:{...s.searchModal,visible:false},
+      scrollToMessage: mId
+    }));
+  };
+  return html`
+    <div class="SearchModal">
+      <h3>${global?'Global':'Notebook'} Search</h3>
+      <input placeholder="Search..." value=${query}
+             onInput=${e=>setState(s=>({...s,searchModal:{...s.searchModal,query:e.target.value}}))}/>
+      ${results.map(r=>html`
+        <div class="SearchResult" onClick=${()=>select(r.notebook.id,r.id)}>
+          ${global && html`
+            <div class="NotebookTitle">
+              <div class="NotebookEmoji" style=${{background:r.notebook.color}}>${r.notebook.emoji}</div>
+              <strong>${r.notebook.name}</strong>
+            </div>`}
+          <div>${r.content}</div>
+          <em>${new Date(r.timestamp).toLocaleString()}</em>
+        </div>
+      `)}
+      <button onClick=${()=>setState(s=>({...s,searchModal:{...s.searchModal,visible:false}}))}>Close</button>
+    </div>
+  `;
+}
+
+function AppSettingsModal(){
+  const { state, setState } = useContext(AppContext);
+  const exportData=()=>JSON.stringify({
+    notebooks:state.notebooks,
+    messages:state.notebooks.reduce((acc,nb)=>({
+      ...acc, [nb.id]: JSON.parse(localStorage.getItem(`notebook-${nb.id}`)||'[]')
+    }),{})
+  },null,2);
+  const [txt,setTxt]=useState('');
+  const doImport=()=>{
+    try{
+      const obj=JSON.parse(txt);
+      if(obj.notebooks&&obj.messages){
+        localStorage.setItem('notebooks',JSON.stringify(obj.notebooks));
+        Object.entries(obj.messages).forEach(([id,arr])=>{
+          localStorage.setItem(`notebook-${id}`,JSON.stringify(arr));
         });
+        window.location.reload();
+      } else alert('Invalid format');
+    } catch{ alert('Invalid JSON'); }
+  };
+  return html`
+    <div class="AppSettingsModal">
+      <h3>App Settings</h3>
+      <h4>Export Data</h4>
+      <textarea readonly rows="8">${exportData()}</textarea>
+      <h4>Import Data</h4>
+      <textarea rows="6" placeholder="Paste JSON here"
+                onInput=${e=>setTxt(e.target.value)}/>
+      <button onClick=${doImport}>Import</button>
+      <button onClick=${()=>setState(s=>({...s,showAppSettings:false}))}>Close</button>
+    </div>
+  `;
+}
 
-        const loadFromStorage = useCallback(() => {
-            const notebooks = JSON.parse(localStorage.getItem('notebooks') || '[]');
-            const messages = JSON.parse(localStorage.getItem('messages') || '{}');
-            setState(prev => ({ ...prev, notebooks, messages }));
-        }, []);
+render(html`<${App}/>`, document.body);
+</script>
+</body>
+</html> -->
 
-        useEffect(() => { loadFromStorage(); }, []);
+<!--
 
-        useEffect(() => {
-            localStorage.setItem('notebooks', JSON.stringify(state.notebooks));
-            localStorage.setItem('messages', JSON.stringify(state.messages));
-        }, [state.notebooks, state.messages]);
-
-        const createNotebook = useCallback(() => {
-            const newNotebook = {
-                id: Date.now(),
-                name: 'New Notebook',
-                emoji: '📒',
-                color: '#ffffff',
-                lastModified: Date.now(),
-                lastMessage: ''
-            };
-            
-            setState(prev => ({
-                ...prev,
-                notebooks: [...prev.notebooks, newNotebook],
-                messages: { ...prev.messages, [newNotebook.id]: [] }
-            }));
-        }, []);
-
-        const contextValue = { state, setState, createNotebook };
-
-        return html`
-            <${AppContext.Provider} value=${contextValue}>
-                <div class="App ${state.selectedNotebook ? 'show-chat' : ''}">
-                    <${ChatList} />
-                    <${ChatScreen} />
-                    ${state.showSettings && html`<${SettingsModal} />`}
-                </div>
-            <//>
-        `;
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WhichNot: WhatsApp‑style Notes</title>
+  <style>
+    :root {
+      --whatsapp-green: #00a884;
+      --header-bg: #f0f2f5;
     }
+    body, html { margin: 0; height: 100%; font-family: Arial, sans-serif; }
+    .App { display: flex; height: 100vh; }
 
-    function ChatList() {
-        const { state, setState, createNotebook } = useContext(AppContext);
-        
-        return html`
-            <div class="ChatList">
-                <button onClick=${createNotebook}>+ New Notebook</button>
-                ${state.notebooks.sort((a, b) => b.lastModified - a.lastModified).map(notebook => html`
-                    <div class="ChatSlip" onClick=${() => setState(prev => ({ ...prev, selectedNotebook: notebook.id }))}>
-                        <div class="NotebookEmoji" style=${{ background: notebook.color }}>
-                            ${notebook.emoji}
-                        </div>
-                        <div>
-                            <h3>${notebook.name}</h3>
-                            <p>${notebook.lastMessage || 'No messages'}</p>
-                        </div>
-                    </div>
-                `)}
+    .ChatList { width: 30%; background: white; border-right:1px solid #ddd; overflow-y:auto; }
+    .ChatList-header { display:flex; justify-content:space-between; align-items:center; padding:.75rem 1rem; border-bottom:1px solid #ddd; }
+    .ChatList-header button { background:none; border:none; font-size:1.25rem; cursor:pointer; }
+    .NotebookButton { width:100%; padding:.75rem 1rem; background:none; border:none; cursor:pointer; text-align:left; }
+    .NotebookButton:hover { background:#f5f5f5; }
+    .NotebookTitle { display:flex; align-items:center; gap:.5rem; }
+    .NotebookEmoji { width:1.5rem; height:1.5rem; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1rem; }
+    .NotebookName { margin:0; font-size:1rem; }
+    .NotebookDescription { font-size:.875rem; color:#555; margin:.25rem 0 0 2rem; }
+    .NotebookPreview { font-size:.875rem; color:#666; margin:.25rem 0 0 2rem; }
+
+    .ChatScreen { flex:1; display:none; flex-direction:column; background:#efeae2; }
+    .App.show-chat .ChatScreen { display:flex; }
+    .ChatHeader { background:var(--header-bg); padding:.5rem; display:flex; align-items:center; gap:.5rem; border-bottom:1px solid #ddd; cursor:pointer; }
+    .ChatHeader h3 { margin:0; flex:1; font-size:1rem; }
+    .BackButton, .SearchButton { font-size:1.5rem; padding:.25rem; background:none; border:none; cursor:pointer; }
+
+    .Messages { flex:1; overflow-y:auto; padding:1rem; display:flex; flex-direction:column; gap:.5rem; }
+    .Message { background:white; padding:.5rem 1rem; border-radius:.5rem; max-width:70%; word-break:break-word; margin:.5rem auto; position:relative; }
+    .Message .reactions { display:flex; gap:.25rem; margin-top:.25rem; }
+    .Message .reactions button { background:#f5f5f5; border:none; border-radius:.25rem; padding:0 .5rem; cursor:pointer; }
+    .AddReactionBtn { font-size:.9rem; background:none; border:none; cursor:pointer; color:var(--whatsapp-green); }
+    .ReactionInput { width:2rem; padding:.1rem; font-size:1rem; }
+    .Timestamp { font-size:.75rem; color:#666; margin-top:.25rem; text-align:right; }
+
+    .SendBar { display:flex; gap:.5rem; padding:1rem; background:white; border-top:1px solid #ddd; flex-direction:column; }
+    .ReplyPreview { background:#f5f5f5; padding:.5rem; border-radius:.25rem; display:flex; justify-content:space-between; align-items:center; }
+    .EditArea { flex:1; padding:.5rem; border:1px solid #ddd; border-radius:.5rem; resize:none; }
+
+    .ContextMenu { position:fixed; background:white; border:1px solid #ddd; border-radius:.25rem; box-shadow:0 2px 8px rgba(0,0,0,0.1); z-index:1000; min-width:140px; }
+    .ContextMenuItem { padding:.5rem 1rem; cursor:pointer; }
+    .ContextMenuItem:hover { background:#f5f5f5; }
+
+    .DateTimeModal, .SearchModal, .AppSettingsModal, .CreateModal, .CrossReplyModal {
+      position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+      background:white; padding:2rem; border-radius:.5rem; box-shadow:0 0 1rem rgba(0,0,0,0.1);
+      max-height:80vh; overflow-y:auto; width:90%; max-width:400px; z-index:1001;
+    }
+    .SearchModal input, .AppSettingsModal textarea, .CreateModal input {
+      width:100%; margin:.5rem 0; padding:.5rem; border:1px solid #ddd; border-radius:.25rem;
+    }
+    .SearchResult { padding:.5rem 0; border-bottom:1px solid #eee; cursor:pointer; }
+    .SearchResult:hover { background:#f9f9f9; }
+
+    .ReplyIndicator { border-left:3px solid var(--whatsapp-green); padding-left:.5rem; margin-bottom:.5rem; color:#666; font-size:.9em; cursor:pointer; }
+
+    @media (max-width:768px) {
+      .ChatList { width:100%; }
+      .ChatScreen { width:100%; display:none; }
+      .App.show-chat .ChatList { display:none; }
+      .App.show-chat .ChatScreen { display:flex; }
+    }
+  </style>
+</head>
+<body>
+<script type="module">
+import { h, render, createContext } from 'https://esm.sh/preact';
+import { useState, useEffect, useCallback, useRef, useContext } from 'https://esm.sh/preact/hooks';
+import htm from 'https://esm.sh/htm';
+const html = htm.bind(h), AppContext = createContext();
+
+// Crypto Helpers (AES-GCM + Ed25519 + HKDF)
+async function genAESKey(){ return crypto.subtle.generateKey({name:'AES-GCM',length:256},true,['encrypt','decrypt']); }
+async function genEd25519(){ return crypto.subtle.generateKey({name:'Ed25519',namedCurve:'Ed25519'},true,['sign','verify']); }
+async function exportJWK(key){ return btoa(JSON.stringify(await crypto.subtle.exportKey('jwk',key))); }
+async function importJWK(b64,alg,usages){ const jwk=JSON.parse(atob(b64)); return crypto.subtle.importKey('jwk',jwk,alg,true,usages); }
+function randBytes(n=12){ const b=new Uint8Array(n);crypto.getRandomValues(b);return b; }
+function bufToB64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function b64ToBuf(s){ return Uint8Array.from(atob(s),c=>c.charCodeAt(0)); }
+async function deriveKey(raw, salt){
+  const hk=await crypto.subtle.importKey('raw',raw,'HKDF',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'HKDF',salt,info:new TextEncoder().encode('msg'),hash:'SHA-256'}, hk,{name:'AES-GCM',length:256},true,['encrypt','decrypt']);
+}
+const linkify=txt=>txt.replace(/(\bhttps?:\/\/[^\s]+)/g,'<a href="$1" target="_blank">$1</a>');
+
+// App Component
+function App(){
+  const [state,setState] = useState({
+    notebooks:[], encrypted:{}, messages:{},
+    selectedNotebook:null, editingMessage:null,
+    showSettings:false, showAppSettings:false,
+    createModal:false, crossReplyModal:false, crossReplySource:null,
+    contextMenu:{visible:false,messageIndex:null,x:0,y:0},
+    dateTimeModal:null, replyingTo:null,
+    searchModal:{visible:false,global:false,query:''},
+    scrollToMessage:null, reactionInputFor:null
+  });
+  const inputRef = useRef();
+
+  // Load from localStorage & decrypt
+  useEffect(()=>{
+    const raw=JSON.parse(localStorage.getItem('notebooks')||'[]'),
+          enc={}, msgs={};
+    (async()=>{
+      for(const nb of raw){
+        const arr=JSON.parse(localStorage.getItem(`notebook-${nb.id}`)||'[]');
+        enc[nb.id]=arr;
+        const aes=await importJWK(nb.aesKeyB64,{name:'AES-GCM'},['encrypt','decrypt']),
+              rawKey=await crypto.subtle.exportKey('raw',aes),
+              plain=[];
+        for(const e of arr){
+          const salt=b64ToBuf(e.salt), iv=b64ToBuf(e.iv),
+                key=await deriveKey(rawKey,salt),
+                ct=b64ToBuf(e.ciphertext),
+                dec=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
+          plain.push({...e,content:new TextDecoder().decode(dec)});
+        }
+        msgs[nb.id]=plain;
+      }
+      setState(s=>({...s,notebooks:raw,encrypted:enc,messages:msgs}));
+    })();
+  },[]);
+
+  // Persist notebooks meta & encrypted store
+  useEffect(()=>localStorage.setItem('notebooks',JSON.stringify(state.notebooks)),[state.notebooks]);
+  useEffect(()=>{
+    for(const id in state.encrypted) localStorage.setItem(`notebook-${id}`,JSON.stringify(state.encrypted[id]));
+  },[state.encrypted]);
+
+  // Close context menu
+  useEffect(()=>{
+    const h=e=>{
+      if(state.contextMenu.visible){
+        const m=document.querySelector('.ContextMenu');
+        if(m&&!m.contains(e.target)) setState(s=>({...s,contextMenu:{...s.contextMenu,visible:false}}));
+      }
+    };
+    document.addEventListener('click',h);
+    return ()=>document.removeEventListener('click',h);
+  },[state.contextMenu.visible]);
+
+  // Create notebook
+  const createNotebook=useCallback(async(type)=>{
+    let id=type==='local'?crypto.randomUUID():prompt('Remote ID:');
+    if(!id) return;
+    const now=Date.now(), aes=await genAESKey(), ed=await genEd25519();
+    const aesB64=await exportJWK(aes), privB64=await exportJWK(ed.privateKey), pubB64=await exportJWK(ed.publicKey);
+    const nb={ id,name:'New Notebook',emoji:'📒',
+      color:'#'+Math.floor(Math.random()*0xFFFFFF).toString(16).padStart(6,'0'),
+      sourceType:type,description:'',parseMode:'plaintext',
+      nextMessageId:1,created:now,
+      aesKeyB64:aesB64,edPrivB64:privB64,edPubB64:pubB64
+    };
+    setState(s=>({
+      ...s,
+      notebooks:[...s.notebooks,nb],
+      encrypted:{...s.encrypted,[id]:[]},
+      messages:{...s.messages,[id]:[]},
+      createModal:false
+    }));
+    if(type==='remote'){
+      await fetch(`/notebook/${id}`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({publicKey:pubB64})
+      });
+    }
+  },[state.notebooks]);
+
+  // Persist messages (encrypt+sync)
+  const persistMessages=useCallback(async(nbId, plainArr)=>{
+    const nb=state.notebooks.find(n=>n.id===nbId); if(!nb) return;
+    const aes=await importJWK(nb.aesKeyB64,{name:'AES-GCM'},['encrypt','decrypt']),
+          rawKey=await crypto.subtle.exportKey('raw',aes),
+          encArr=[];
+    for(const m of plainArr){
+      const salt=randBytes(), iv=randBytes(12),
+            key=await deriveKey(rawKey,salt),
+            ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(m.content));
+      encArr.push({
+        id:m.id, salt:bufToB64(salt), iv:bufToB64(iv),
+        ciphertext:bufToB64(ct), timestamp:m.timestamp,
+        edited:m.edited, replyTo:m.replyTo, reactions:m.reactions
+      });
+    }
+    setState(s=>({...s,encrypted:{...s.encrypted,[nbId]:encArr},messages:{...s.messages,[nbId]:plainArr}}));
+    if(nb.sourceType==='remote'){
+      const priv=await importJWK(nb.edPrivB64,{name:'Ed25519',namedCurve:'Ed25519'},['sign']),
+            payload=new TextEncoder().encode(JSON.stringify(encArr)),
+            sig=bufToB64(await crypto.subtle.sign('Ed25519',priv,payload));
+      await fetch(`/notebook/${nbId}/sync`,{
+        method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({encryptedArr:encArr,signature:sig,publicKey:nb.edPubB64})
+      });
+    }
+  },[state.notebooks]);
+
+  // Reactions
+  const addReaction=useCallback(idx=>setState(s=>({...s,reactionInputFor:idx})),[]);
+  const confirmReaction=useCallback(async(idx,emoji)=>{
+    if(!emoji) return setState(s=>({...s,reactionInputFor:null}));
+    const nbId=state.selectedNotebook, arr=state.messages[nbId]||[];
+    const newArr=arr.map((m,i)=>i===idx?{...m,reactions:m.reactions.includes(emoji)?m.reactions:[...m.reactions,emoji]}:m);
+    await persistMessages(nbId,newArr);
+    setState(s=>({...s,reactionInputFor:null}));
+  },[state.selectedNotebook,state.messages,persistMessages]);
+  const removeReaction=useCallback(async(idx,emoji)=>{
+    const nbId=state.selectedNotebook, arr=state.messages[nbId]||[];
+    const newArr=arr.map((m,i)=>i===idx?{...m,reactions:m.reactions.filter(r=>r!==emoji)}:m);
+    await persistMessages(nbId,newArr);
+  },[state.selectedNotebook,state.messages,persistMessages]);
+
+  // Prefill on edit
+  useEffect(()=>{
+    if(state.editingMessage!=null && inputRef.current){
+      const nbId=state.selectedNotebook;
+      const m=state.messages[nbId]?.[state.editingMessage];
+      if(m) inputRef.current.value=m.content;
+    }
+  },[state.editingMessage, state.selectedNotebook]);
+
+  // Send or save message
+  const sendMessage=useCallback(async()=>{
+    const nbId=state.selectedNotebook; if(!nbId) return;
+    const txt=inputRef.current.value.trim(); if(!txt) return;
+    const arr=state.messages[nbId]||[], nb=state.notebooks.find(n=>n.id===nbId);
+    let newArr;
+    if(state.editingMessage!=null){
+      // Editing: preserve id & timestamp
+      newArr = arr.map((m,i)=> i===state.editingMessage
+        ? {...m, content:txt, edited:true}
+        : m
+      );
+      setState(s=>({...s,editingMessage:null,replyingTo:null}));
+    } else {
+      // New message
+      const m={ id:nb.nextMessageId, content:txt, timestamp:Date.now(), edited:false, replyTo:state.replyingTo, reactions:[] };
+      newArr=[...arr,m];
+      setState(s=>({
+        ...s,
+        notebooks:s.notebooks.map(n=>n.id===nbId?{...n,nextMessageId:n.nextMessageId+1}:n),
+        replyingTo:null
+      }));
+    }
+    inputRef.current.value='';
+    await persistMessages(nbId,newArr);
+  },[state.selectedNotebook, state.editingMessage, state.replyingTo, state.messages, state.notebooks]);
+
+  return html`
+    <${AppContext.Provider} value=${{
+      state,setState,createNotebook,sendMessage,persistMessages,
+      addReaction,confirmReaction,removeReaction
+    }}>
+      <div class="App ${state.selectedNotebook?'show-chat':''}">
+        <${ChatList}/>
+        <${ChatScreen} inputRef=${inputRef}/>
+        ${state.createModal && html`<${CreateModal}/>`}
+        ${state.crossReplyModal && html`<${CrossReplyModal}/>`}
+        ${state.showSettings && html`<${SettingsModal}/>`}
+        ${state.showAppSettings && html`<${AppSettingsModal}/>`}
+        ${state.contextMenu.visible && html`<${ContextMenu}/>`}
+        ${state.dateTimeModal!==null && html`<${DateTimeModal}/>`}
+        ${state.searchModal.visible && html`<${SearchModal}/>`}
+      </div>
+    <//>
+  `;
+}
+
+// ChatList
+function ChatList(){
+  const {state,setState} = useContext(AppContext);
+  return html`
+    <div class="ChatList">
+      <div class="ChatList-header">
+        <button onClick=${()=>setState(s=>({...s,createModal:true}))}>＋</button>
+        <button onClick=${()=>setState(s=>({...s,searchModal:{visible:true,global:true,query:''}}))}>🔍</button>
+        <button onClick=${()=>setState(s=>({...s,showAppSettings:true}))}>⚙️</button>
+      </div>
+      ${state.notebooks.sort((a,b)=>{
+        const ta=Math.max(a.created,...(state.messages[a.id]||[]).map(m=>m.timestamp));
+        const tb=Math.max(b.created,...(state.messages[b.id]||[]).map(m=>m.timestamp));
+        return tb-ta;
+      }).map(nb=>html`
+        <button class="NotebookButton" key=${nb.id} onClick=${()=>setState(s=>({...s,selectedNotebook:nb.id}))}>
+          <div class="NotebookTitle">
+            <div class="NotebookEmoji" style=${{background:nb.color}}>${nb.emoji}</div>
+            <h4 class="NotebookName">${nb.name}</h4>
+          </div>
+          <div class="NotebookDescription">${nb.description||'<em>No description</em>'}</div>
+          <div class="NotebookPreview">${(()=>{const a=state.messages[nb.id]||[];return a.length?a[a.length-1].content:'No messages';})()}</div>
+        </button>
+      `)}
+    </div>
+  `;
+}
+
+// ChatScreen
+function ChatScreen({inputRef}){
+  const {state,setState,sendMessage,addReaction,confirmReaction,removeReaction} = useContext(AppContext);
+  const nb=state.notebooks.find(n=>n.id===state.selectedNotebook);
+  const msgs=(state.messages[nb?.id]||[]).slice().sort((a,b)=>a.timestamp-b.timestamp);
+
+  useEffect(()=>{
+    if(state.scrollToMessage!=null){
+      const el=document.querySelector(`[data-msg-id="${state.scrollToMessage}"]`);
+      if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+      setState(s=>({...s,scrollToMessage:null}));
+    }
+  },[state.scrollToMessage, state.selectedNotebook]);
+
+  if(!nb) return null;
+  return html`
+    <div class="ChatScreen">
+      <div class="ChatHeader" onClick=${()=>setState(s=>({...s,showSettings:true}))}>
+        <button class="BackButton" onClick=${e=>{e.stopPropagation();setState(s=>({...s,selectedNotebook:null}));}}>←</button>
+        <div class="NotebookEmoji" style=${{background:nb.color}}>${nb.emoji}</div>
+        <h3>${nb.name}</h3>
+        <button class="SearchButton" onClick=${e=>{e.stopPropagation();setState(s=>({...s,searchModal:{visible:true,global:false,query:''}}));}}>🔍</button>
+      </div>
+      <div class="Messages">
+        ${msgs.map((m,i)=>html`
+          <div class="Message" data-msg-id=${m.id}
+               onContextMenu=${e=>{e.preventDefault();setState(s=>({...s,contextMenu:{visible:true,messageIndex:i,x:e.clientX,y:e.clientY}}));}}
+               onTouchStart=${e=>{e.preventDefault();const t=e.touches[0];setState(s=>({...s,contextMenu:{visible:true,messageIndex:i,x:t.clientX,y:t.clientY}}));}}>
+            ${m.replyTo&&html`
+              <div class="ReplyIndicator" onClick=${()=>setState(s=>({
+                selectedNotebook:m.replyTo.notebookId,
+                scrollToMessage:m.replyTo.id
+              }))}>
+                Reply to "${(state.messages[m.replyTo.notebookId]||[]).find(x=>x.id===m.replyTo.id)?.content||''}"
+              </div>`}
+            <div dangerouslySetInnerHTML=${{__html:linkify(m.content)}}/>
+            <div class="reactions">
+              ${m.reactions.map(r=>html`<button onClick=${()=>removeReaction(i,r)}>${r}</button>`)}
+              ${state.reactionInputFor===i
+                ? html`<input class="ReactionInput" maxlength="2" autofocus onKeyPress=${e=>e.key==='Enter'&&(confirmReaction(i,e.target.value), e.target.value='')} />`
+                : html`<button class="AddReactionBtn" onClick=${()=>addReaction(i)}>➕</button>`}
             </div>
-        `;
+            <div class="Timestamp">${new Date(m.timestamp).toLocaleString()}${m.edited?' (edited)':''}</div>
+          </div>
+        `)}
+      </div>
+      <div class="SendBar">
+        ${state.replyingTo&&html`
+          <div class="ReplyPreview">
+            <span>Replying to: ${(state.messages[state.replyingTo.notebookId]||[]).find(x=>x.id===state.replyingTo.id)?.content||''}</span>
+            <button onClick=${()=>setState(s=>({...s,replyingTo:null}))}>×</button>
+          </div>`}
+        <textarea ref=${inputRef} class="EditArea" onKeyPress=${e=>e.key==='Enter'&&!e.shiftKey&&sendMessage()}/>
+        <button onClick=${sendMessage}>${state.editingMessage!=null?'Save':'Send'}</button>
+      </div>
+    </div>
+  `;
+}
+
+// CreateModal
+function CreateModal(){
+  const {createNotebook,setState} = useContext(AppContext);
+  return html`
+    <div class="CreateModal">
+      <h3>Create Notebook</h3>
+      <button onClick=${()=>createNotebook('local')}>Local Notebook</button>
+      <button onClick=${()=>createNotebook('remote')}>Remote Notebook</button>
+      <button onClick=${()=>setState(s=>({...s,createModal:false}))}>Cancel</button>
+    </div>
+  `;
+}
+
+// CrossReplyModal
+function CrossReplyModal(){
+  const {state,setState} = useContext(AppContext);
+  return html`
+    <div class="CrossReplyModal">
+      <h3>Reply in Another Notebook</h3>
+      ${state.notebooks.filter(n=>n.id!==state.crossReplySource.nb).map(n=>html`
+        <button onClick=${()=>setState(s=>({
+          ...s,
+          selectedNotebook:n.id,
+          replyingTo:{notebookId:s.crossReplySource.nb,id:s.crossReplySource.id},
+          crossReplyModal:false
+        }))}>${n.emoji} ${n.name}</button>
+      `)}
+      <button onClick=${()=>setState(s=>({...s,crossReplyModal:false}))}>Cancel</button>
+    </div>
+  `;
+}
+
+// ContextMenu
+function ContextMenu(){
+  const {state,setState,persistMessages} = useContext(AppContext);
+  const idx=state.contextMenu.messageIndex, nbId=state.selectedNotebook;
+  const arr=state.messages[nbId]||[], msg=arr[idx];
+  const handle=action=>{
+    let newArr;
+    switch(action){
+      case 'reply':
+        setState(s=>({...s,replyingTo:{notebookId:nbId,id:msg.id},contextMenu:{...s.contextMenu,visible:false}}));
+        return;
+      case 'cross-reply':
+        setState(s=>({...s,contextMenu:{...s.contextMenu,visible:false},crossReplyModal:true,crossReplySource:{nb:nbId,id:msg.id}}));
+        return;
+      case 'edit':
+        setState(s=>({...s,editingMessage:idx,contextMenu:{...s.contextMenu,visible:false}}));
+        return;
+      case 'datetime':
+        setState(s=>({...s,dateTimeModal:idx,contextMenu:{...s.contextMenu,visible:false}}));
+        return;
+      case 'delete':
+        newArr=arr.filter((_,i)=>i!==idx);
+        persistMessages(nbId,newArr);
+        setState(s=>({...s,messages:{...s.messages,[nbId]:newArr},contextMenu:{...s.contextMenu,visible:false}}));
+        return;
+    }
+  };
+  return html`
+    <div class="ContextMenu" style=${`left:${state.contextMenu.x}px;top:${state.contextMenu.y}px`}>
+      <div class="ContextMenuItem" onClick=${()=>handle('reply')}>Reply</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('cross-reply')}>Reply in Another Notebook</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('edit')}>Edit</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('datetime')}>Set Date/Time</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('delete')}>Delete</div>
+    </div>
+  `;
+}
+
+// DateTimeModal
+function DateTimeModal(){
+  const {state,setState,persistMessages} = useContext(AppContext);
+  const idx=state.dateTimeModal, nbId=state.selectedNotebook;
+  const arr=state.messages[nbId]||[], msg=arr[idx];
+  const [dt,setDt]=useState('');
+  useEffect(()=>{ if(msg) setDt(new Date(msg.timestamp).toISOString().slice(0,16)); },[msg]);
+  const save=()=>{
+    const ts=new Date(dt).getTime();
+    if(!isNaN(ts)){
+      const newArr=arr.map((m,i)=>i===idx?{...m,timestamp:ts}:m);
+      persistMessages(nbId,newArr);
+      setState(s=>({...s,messages:{...s.messages,[nbId]:newArr},dateTimeModal:null}));
+    }
+  };
+  return html`
+    <div class="DateTimeModal">
+      <h3>Set Date/Time</h3>
+      <input type="datetime-local" value=${dt} onChange=${e=>setDt(e.target.value)}/>
+      <button onClick=${save}>Save</button>
+      <button onClick=${()=>setState(s=>({...s,dateTimeModal:null}))}>Cancel</button>
+    </div>
+  `;
+}
+
+// SettingsModal
+function SettingsModal(){
+  const {state,setState} = useContext(AppContext);
+  const nb=state.notebooks.find(n=>n.id===state.selectedNotebook);
+  const [form,setForm]=useState({...nb});
+  const save=()=>setState(s=>({...s,notebooks:s.notebooks.map(n=>n.id===nb.id?form:n),showSettings:false}));
+  const del=()=>{
+    if(confirm('Delete?')){
+      if(nb.sourceType==='local') localStorage.removeItem(`notebook-${nb.id}`);
+      setState(s=>({...s,notebooks:s.notebooks.filter(n=>n.id!==nb.id),messages:{...s.messages,[nb.id]:undefined},encrypted:{...s.encrypted,[nb.id]:undefined},selectedNotebook:null,showSettings:false}));
+    }
+  };
+  return html`
+    <div class="CreateModal">
+      <h3>Settings</h3>
+      <label>Name:<input value=${form.name} onChange=${e=>setForm(f=>({...f,name:e.target.value}))}/></label><br/>
+      <label>Emoji:<input value=${form.emoji} maxLength="2" onChange=${e=>setForm(f=>({...f,emoji:e.target.value}))}/></label><br/>
+      <label>Color:<input type="color" value=${form.color} onChange=${e=>setForm(f=>({...f,color:e.target.value}))}/></label><br/>
+      <label>Description:<input value=${form.description} onChange=${e=>setForm(f=>({...f,description:e.target.value}))}/></label><br/>
+      <label>Parse Mode:<select value=${form.parseMode} onChange=${e=>setForm(f=>({...f,parseMode:e.target.value}))}><option value="plaintext">Plaintext</option></select></label><br/><br/>
+      <button onClick=${save}>Save</button>
+      <button onClick=${del} style="color:red">Delete</button>
+      <button onClick=${()=>setState(s=>({...s,showSettings:false}))}>Close</button>
+    </div>
+  `;
+}
+
+// SearchModal
+function SearchModal(){
+  const {state,setState} = useContext(AppContext);
+  const {query,global} = state.searchModal;
+  const all=global
+    ? state.notebooks.flatMap(nb=>(state.messages[nb.id]||[]).map(m=>({...m,notebook:nb})))
+    : (state.messages[state.selectedNotebook]||[]).map(m=>({...m,notebook:state.notebooks.find(n=>n.id===state.selectedNotebook)}));
+  const results=all.filter(m=>m.content.toLowerCase().includes(query.toLowerCase()));
+  const select=(nbId,mId)=>setState(s=>({...s,selectedNotebook:nbId,searchModal:{...s.searchModal,visible:false},scrollToMessage:mId}));
+  return html`
+    <div class="SearchModal">
+      <h3>${global?'Global':'Notebook'} Search</h3>
+      <input placeholder="Search..." value=${query} onInput=${e=>setState(s=>({...s,searchModal:{...s.searchModal,query:e.target.value}}))}/>
+      ${results.map(r=>html`
+        <div class="SearchResult" onClick=${()=>select(r.notebook.id,r.id)}>
+          ${global&&html`<div class="NotebookTitle"><div class="NotebookEmoji" style=${{background:r.notebook.color}}>${r.notebook.emoji}</div><strong>${r.notebook.name}</strong></div>`}
+          <div>${r.content}</div><em>${new Date(r.timestamp).toLocaleString()}</em>
+        </div>
+      `)}
+      <button onClick=${()=>setState(s=>({...s,searchModal:{...s.searchModal,visible:false}}))}>Close</button>
+    </div>
+  `;
+}
+
+// AppSettingsModal
+function AppSettingsModal(){
+  const {state,setState} = useContext(AppContext);
+  const exportData=()=>JSON.stringify({notebooks:state.notebooks,encrypted:state.encrypted},null,2);
+  const [txt,setTxt]=useState('');
+  const doImport=()=>{
+    try{
+      const obj=JSON.parse(txt);
+      if(obj.notebooks&&obj.encrypted){
+        localStorage.setItem('notebooks',JSON.stringify(obj.notebooks));
+        Object.entries(obj.encrypted).forEach(([id,arr])=>localStorage.setItem(`notebook-${id}`,JSON.stringify(arr)));
+        window.location.reload();
+      } else alert('Invalid');
+    } catch{ alert('Bad JSON'); }
+  };
+  return html`
+    <div class="AppSettingsModal">
+      <h3>App Settings</h3>
+      <h4>Export Data</h4><textarea readonly rows="8">${exportData()}</textarea>
+      <h4>Import Data</h4><textarea rows="6" placeholder="Paste JSON" onInput=${e=>setTxt(e.target.value)}/>
+      <button onClick=${doImport}>Import</button>
+      <button onClick=${()=>setState(s=>({...s,showAppSettings:false}))}>Close</button>
+    </div>
+  `;
+}
+
+render(html`<${App}/>`, document.body);
+</script>
+</body>
+</html>
+
+-->
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WhichNot: WhatsApp‑style Notes</title>
+  <style>
+    :root {
+      --whatsapp-green: #00a884;
+      --header-bg: #f0f2f5;
+    }
+    body, html { margin: 0; height: 100%; font-family: Arial, sans-serif; }
+    .App { display: flex; height: 100vh; }
+    .ChatList { width: 30%; background: white; border-right:1px solid #ddd; overflow-y:auto; }
+    .ChatList-header { display:flex; justify-content:space-between; align-items:center; padding:.75rem 1rem; border-bottom:1px solid #ddd; }
+    .ChatList-header button { background:none; border:none; font-size:1.25rem; cursor:pointer; }
+    .NotebookButton { width:100%; padding:.75rem 1rem; background:none; border:none; cursor:pointer; text-align:left; }
+    .NotebookButton:hover { background:#f5f5f5; }
+    .NotebookTitle { display:flex; align-items:center; gap:.5rem; }
+    .NotebookEmoji { width:1.5rem; height:1.5rem; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1rem; }
+    .NotebookName { margin:0; font-size:1rem; }
+    .NotebookDescription { font-size:.875rem; color:#555; margin:.25rem 0 0 2rem; }
+    .NotebookPreview { font-size:.875rem; color:#666; margin:.25rem 0 0 2rem; }
+
+    .ChatScreen { flex:1; display:none; flex-direction:column; background:#efeae2; }
+    .App.show-chat .ChatScreen { display:flex; }
+    .ChatHeader { background:var(--header-bg); padding:.5rem; display:flex; align-items:center; gap:.5rem; border-bottom:1px solid #ddd; cursor:pointer; }
+    .ChatHeader h3 { margin:0; flex:1; font-size:1rem; }
+    .BackButton, .SearchButton { font-size:1.5rem; padding:.25rem; background:none; border:none; cursor:pointer; }
+
+    .Messages { flex:1; overflow-y:auto; padding:1rem; display:flex; flex-direction:column; gap:.5rem; }
+    .Message { background:white; padding:.5rem 1rem; border-radius:.5rem; max-width:70%; word-break:break-word; margin:.5rem auto; position:relative; }
+    .Message .reactions { display:flex; gap:.25rem; margin-top:.25rem; }
+    .Message .reactions button { background:#f5f5f5; border:none; border-radius:.25rem; padding:0 .5rem; cursor:pointer; }
+    .AddReactionBtn { font-size:.9rem; background:none; border:none; cursor:pointer; color:var(--whatsapp-green); }
+    .ReactionInput { width:2rem; padding:.1rem; font-size:1rem; }
+    .Timestamp { font-size:.75rem; color:#666; margin-top:.25rem; text-align:right; }
+
+    .SendBar { display:flex; gap:.5rem; padding:1rem; background:white; border-top:1px solid #ddd; flex-direction:column; }
+    .ReplyPreview { background:#f5f5f5; padding:.5rem; border-radius:.25rem; display:flex; justify-content:space-between; align-items:center; }
+    .EditArea { flex:1; padding:.5rem; border:1px solid #ddd; border-radius:.5rem; resize:none; }
+
+    .ContextMenu { position:fixed; background:white; border:1px solid #ddd; border-radius:.25rem; box-shadow:0 2px 8px rgba(0,0,0,0.1); z-index:1000; min-width:140px; }
+    .ContextMenuItem { padding:.5rem 1rem; cursor:pointer; }
+    .ContextMenuItem:hover { background:#f5f5f5; }
+
+    .DateTimeModal, .SearchModal, .AppSettingsModal, .CreateModal, .CrossReplyModal {
+      position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+      background:white; padding:2rem; border-radius:.5rem; box-shadow:0 0 1rem rgba(0,0,0,0.1);
+      max-height:80vh; overflow-y:auto; width:90%; max-width:400px; z-index:1001;
+    }
+    .SearchModal input, .AppSettingsModal textarea, .CreateModal input {
+      width:100%; margin:.5rem 0; padding:.5rem; border:1px solid #ddd; border-radius:.25rem;
+    }
+    .SearchResult { padding:.5rem 0; border-bottom:1px solid #eee; cursor:pointer; }
+    .SearchResult:hover { background:#f9f9f9; }
+
+    .ReplyIndicator {
+      border-left:3px solid var(--whatsapp-green); padding-left:.5rem; margin-bottom:.5rem;
+      color:#666; font-size:.9em; cursor:pointer;
     }
 
-    function ChatScreen() {
-        const { state, setState } = useContext(AppContext);
-        const inputRef = useRef();
-        const notebook = state.notebooks.find(n => n.id === state.selectedNotebook);
-        const messages = state.messages[state.selectedNotebook] || [];
-
-        const sendMessage = useCallback(() => {
-            const content = inputRef.current.value.trim();
-            if (!content) return;
-
-            setState(prev => {
-                const newMessages = state.editingMessage !== null 
-                    ? prev.messages[prev.selectedNotebook].map((msg, idx) =>
-                        idx === state.editingMessage ? { ...msg, content, edited: true } : msg
-                      )
-                    : [...(prev.messages[prev.selectedNotebook] || []), {
-                        content,
-                        timestamp: Date.now(),
-                        edited: false
-                    }];
-
-                const updatedNotebooks = prev.notebooks.map(n => 
-                    n.id === prev.selectedNotebook ? { 
-                        ...n, 
-                        lastModified: Date.now(),
-                        lastMessage: content 
-                    } : n
-                );
-
-                return {
-                    ...prev,
-                    messages: { ...prev.messages, [prev.selectedNotebook]: newMessages },
-                    notebooks: updatedNotebooks,
-                    editingMessage: null
-                };
-            });
-
-            inputRef.current.value = '';
-        }, [state.selectedNotebook, state.editingMessage]);
-
-        return html`
-            <div class="ChatScreen">
-                <div class="ChatHeader">
-                    <button onClick=${() => setState(prev => ({ ...prev, selectedNotebook: null }))}>←</button>
-                    <div class="NotebookEmoji" style=${{ background: notebook?.color }}>${notebook?.emoji}</div>
-                    <h3>${notebook?.name}</h3>
-                    <button onClick=${() => setState(prev => ({ ...prev, showSettings: true }))}>⚙️</button>
-                </div>
-                
-                <div class="Messages">
-                    ${messages.map((msg, index) => html`
-                        <div class="Message" onClick=${() => setState(prev => ({ ...prev, editingMessage: index }))}>
-                            ${msg.content}
-                            <div class="Timestamp">
-                                ${new Date(msg.timestamp).toLocaleString()}
-                                ${msg.edited ? ' (edited)' : ''}
-                            </div>
-                        </div>
-                    `)}
-                </div>
-
-                <div class="SendBar">
-                    <textarea 
-                        ref=${inputRef}
-                        class="EditArea"
-                        value=${state.editingMessage !== null ? messages[state.editingMessage]?.content : ''}
-                        onKeyPress=${e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                    />
-                    <button onClick=${sendMessage}>
-                        ${state.editingMessage !== null ? 'Save' : 'Send'}
-                    </button>
-                </div>
-            </div>
-        `;
+    @media (max-width:768px) {
+      .ChatList { width:100%; }
+      .ChatScreen { width:100%; display:none; }
+      .App.show-chat .ChatList { display:none; }
+      .App.show-chat .ChatScreen { display:flex; }
     }
+  </style>
+</head>
+<body>
+<script type="module">
+import { h, render, createContext } from 'https://esm.sh/preact';
+import { useState, useEffect, useCallback, useRef, useContext } from 'https://esm.sh/preact/hooks';
+import htm from 'https://esm.sh/htm';
+const html = htm.bind(h), AppContext = createContext();
 
-    function SettingsModal() {
-        const { state, setState } = useContext(AppContext);
-        const notebook = state.notebooks.find(n => n.id === state.selectedNotebook);
-        const [form, setForm] = useState({ ...notebook });
+const genAESKey = async () => crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt','decrypt']);
+const genEd25519 = async () => crypto.subtle.generateKey({ name: 'Ed25519', namedCurve: 'Ed25519' }, true, ['sign','verify']);
+const exportJWK = async (key) => btoa(JSON.stringify(await crypto.subtle.exportKey('jwk', key)));
+const importJWK = async (b64,alg,usages) => crypto.subtle.importKey('jwk', JSON.parse(atob(b64)), alg, true, usages);
 
-        const saveSettings = useCallback(() => {
-            setState(prev => ({
-                ...prev,
-                notebooks: prev.notebooks.map(n => n.id === notebook.id ? form : n),
-                showSettings: false
-            }));
-        }, [form]);
+const randBytes = (n=12) => {
+  const b = new Uint8Array(n);
+  crypto.getRandomValues(b);
+  return b;
+}
+const bufToB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const b64ToBuf = (str) => Uint8Array.from(atob(str),c=>c.charCodeAt(0));
 
-        const deleteNotebook = useCallback(() => {
-            if (confirm('Delete this notebook?')) {
-                setState(prev => ({
-                    ...prev,
-                    notebooks: prev.notebooks.filter(n => n.id !== notebook.id),
-                    messages: { ...prev.messages, [notebook.id]: undefined },
-                    selectedNotebook: null,
-                    showSettings: false
-                }));
-            }
-        }, [notebook]);
+const deriveMsgKey = async (rawKey,salt) => {
+  const hk = await crypto.subtle.importKey('raw', rawKey, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'HKDF',salt,info:new TextEncoder().encode('msg'),hash:'SHA-256'}, hk, {name:'AES-GCM',length:256}, true, ['encrypt','decrypt']);
+}
 
-        return html`
-            <div class="SettingsModal">
-                <h3>Settings</h3>
-                <label>
-                    Name: 
-                    <input value=${form.name} onChange=${e => setForm(prev => ({ ...prev, name: e.target.value }))} />
-                </label>
-                <label>
-                    Emoji: 
-                    <input value=${form.emoji} maxLength="2" 
-                        onChange=${e => setForm(prev => ({ ...prev, emoji: e.target.value }))} />
-                </label>
-                <label>
-                    Color: 
-                    <input type="color" value=${form.color} 
-                        onChange=${e => setForm(prev => ({ ...prev, color: e.target.value }))} />
-                </label>
-                <button onClick=${saveSettings}>Save</button>
-                <button onClick=${deleteNotebook} style=${{ color: 'red' }}>Delete</button>
-                <button onClick=${() => setState(prev => ({ ...prev, showSettings: false }))}>Close</button>
-            </div>
-        `;
+const linkify = txt => txt.replace(/(\bhttps?:\/\/[^\s]+)/g,'<a href="$1" target="_blank">$1</a>');
+const getNotebook = (notebooks, id) => notebooks.find(notebook => (notebook.id === id));
+const closedContextMenu = (s) => ({ contextMenu: { ...s.contextMenu, visible: false } });
+
+function App() {
+  const [state,setState] = useState({
+    notebooks:[], encrypted:{}, messages:{},
+    selectedNotebook:null, editingMessage:null,
+    showSettings:false, showAppSettings:false,
+    createModal:false, crossReplyModal:false, crossReplySource:null,
+    contextMenu:{visible:false,messageIndex:null,x:0,y:0},
+    dateTimeModal:null, replyingTo:null,
+    searchModal:{visible:false,global:false,query:''},
+    scrollToMessage:null, reactionInputFor:null
+  });
+  const inputRef = useRef();
+
+  // Load & decrypt
+  useEffect(()=>{
+    const raw=JSON.parse(localStorage.getItem('notebooks')) || [],
+          enc={}, msgs={};
+    (async()=>{
+      for(const notebook of raw){
+        const arr=JSON.parse(localStorage.getItem(`notebook-${notebook.id}`)||'[]');
+        enc[notebook.id]=arr;
+        const aes=await importJWK(notebook.aesKeyB64,{name:'AES-GCM'},['encrypt','decrypt']),
+              rawKey=await crypto.subtle.exportKey('raw',aes),
+              plain=[];
+        for (const e of arr) {
+          const salt=b64ToBuf(e.salt), iv=b64ToBuf(e.iv),
+                key=await deriveMsgKey(rawKey,salt),
+                ct=b64ToBuf(e.ciphertext),
+                dec=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
+          plain.push({...e,content:new TextDecoder().decode(dec)});
+        }
+        msgs[notebook.id] = plain;
+      }
+      setState(s => ({ ...s, notebooks: raw, encrypted: enc, messages: msgs }));
+    })();
+  }, []);
+
+  // Persist notebooks meta
+  useEffect(() => localStorage.setItem('notebooks', JSON.stringify(state.notebooks)), [state.notebooks]);
+  // Persist encrypted store
+  useEffect(() => {
+    for (const id in state.encrypted) {
+      localStorage.setItem(`notebook-${id}`, JSON.stringify(state.encrypted[id]));
     }
+  }, [state.encrypted]);
 
-    render(html`<${App} />`, document.body);
+  // Close context on click-away
+  useEffect(() => {
+    const handler = event => {
+      if (state.contextMenu.visible) {
+        const menu = document.querySelector('.ContextMenu');
+        if (menu && !menu.contains(event.target)) {
+          setState(s => ({ ...s, ...closedContextMenu(s) }));
+        }
+      }
+    };
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [state.contextMenu.visible]);
+
+  // Create notebook
+  const createNotebook = useCallback(async(type)=>{
+    let id = (type === 'local' ? crypto.randomUUID() : prompt('Remote ID:'));
+    if (!id) return;
+    const now=Date.now(), aes=await genAESKey(), ed=await genEd25519();
+    const aesB64=await exportJWK(aes), privB64=await exportJWK(ed.privateKey), pubB64=await exportJWK(ed.publicKey);
+    const notebook={ id, name:'New Notebook', emoji:'📒',
+      color:'#'+Math.floor(Math.random()*0xFFFFFF).toString(16).padStart(6,'0'),
+      sourceType:type, description:'', parseMode:'plaintext',
+      nextMessageId:1, created:now,
+      aesKeyB64:aesB64, edPrivB64:privB64, edPubB64:pubB64
+    };
+    setState(s => ({ ...s,
+      notebooks: [ ...s.notebooks, notebook ],
+      encrypted: { ...s.encrypted, [id]: [] },
+      messages: { ...s.messages, [id]: [] },
+      createModal: false,
+    }));
+    if(type==='remote'){
+      await fetch(`/notebook/${id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({publicKey:pubB64})});
+    }
+  }, [state.notebooks]);
+
+  // Persist (encrypt & sync)
+  const persistMessages = useCallback(async(nbId, plainArr)=>{
+    const notebook = getNotebook(state.notebooks, nbId);
+    if (!notebook) return;
+    const aes=await importJWK(notebook.aesKeyB64,{name:'AES-GCM'},['encrypt','decrypt']),
+          rawKey=await crypto.subtle.exportKey('raw',aes),
+          encArr=[];
+    for(const m of plainArr){
+      const salt=randBytes(), iv=randBytes(12),
+            key=await deriveMsgKey(rawKey,salt),
+            ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(m.content));
+      encArr.push({ id:m.id, salt:bufToB64(salt), iv:bufToB64(iv),
+        ciphertext:bufToB64(ct), timestamp:m.timestamp,
+        edited:m.edited, replyTo:m.replyTo, reactions:m.reactions
+      });
+    }
+    setState(s => ({ ...s,
+      encrypted: { ...s.encrypted, [nbId]: encArr },
+      messages: { ...s.messages, [nbId]: plainArr },
+    }));
+    if(notebook.sourceType==='remote'){
+      const priv=await importJWK(notebook.edPrivB64,{name:'Ed25519',namedCurve:'Ed25519'},['sign']),
+            payload=new TextEncoder().encode(JSON.stringify(encArr)),
+            sig=bufToB64(await crypto.subtle.sign('Ed25519',priv,payload));
+      await fetch(`/notebook/${nbId}/sync`,{
+        method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({encryptedArr:encArr,signature:sig,publicKey:notebook.edPubB64})
+      });
+    }
+  }, [state.notebooks]);
+
+  const addReaction = useCallback(idx => setState(s => ({ ...s, reactionInputFor: idx })), []);
+  const confirmReaction = useCallback(async(idx,emoji)=>{
+    if(!emoji) return setState(s=>({...s,reactionInputFor:null}));
+    const nbId=state.selectedNotebook, arr=state.messages[nbId]||[];
+    const newArr=arr.map((m,i)=>i===idx?{...m,reactions:m.reactions.includes(emoji)?m.reactions:[...m.reactions,emoji]}:m);
+    await persistMessages(nbId,newArr);
+    setState(s=>({...s,reactionInputFor:null}));
+  },[state.selectedNotebook, state.messages, persistMessages]);
+  const removeReaction = useCallback(async (idx,emoji) => {
+    const nbId = state.selectedNotebook;
+    const arr = state.messages[nbId] || [];
+    const newArr = arr.map((m,i) => i===idx ? { ...m, reactions: m.reactions.filter(r=>r!==emoji) } : m);
+    await persistMessages(nbId, newArr);
+  }, [state.selectedNotebook, state.messages, persistMessages]);
+
+  // Editing effect: prefill textarea when entering edit mode
+  useEffect(() => {
+    if (state.editingMessage!=null && inputRef.current) {
+      const message = state.messages[state.selectedNotebook]?.[state.editingMessage];
+      if (message) {
+        inputRef.current.value = message.content;
+      }
+      console.log(state, message);
+    }
+  }, [state.editingMessage, state.selectedNotebook, state.messages]);
+
+  const sendMessage = useCallback(async () => {
+    const nbId = state.selectedNotebook;
+    if (!nbId) return;
+    const txt = inputRef.current.value.trim();
+    if (!txt) return;
+    const arr = state.messages[nbId] || [];
+    const notebook = getNotebook(state.notebooks, nbId);
+    //console.log(state);
+    const message = {
+      id: notebook.nextMessageId,
+      content: txt,
+      timestamp: Date.now(),
+      edited: state.editingMessage!=null,
+      replyTo: state.replyingTo,
+      reactions: [],
+    };
+    inputRef.current.value = '';
+    // update nextMessageId if new
+    setState(s => ({ ...s, notebooks: s.notebooks.map(notebook => notebook.id===nbId
+      ? { ...notebook, nextMessageId: (state.editingMessage==null ? notebook.nextMessageId+1 : notebook.nextMessageId) }
+      : notebook
+    ) }));
+    // build new array
+    let newArr;
+    if(state.editingMessage!=null){
+      newArr = arr.map((msg,i)=> i===state.editingMessage ? message : msg);
+    } else {
+      newArr = [...arr, message];
+    }
+    // reset editing & replying
+    setState( s => ({ ...s, editingMessage: null, replyingTo: null }));
+    await persistMessages(nbId, newArr);
+  }, [state.selectedNotebook, state.editingMessage, state.replyingTo, state.messages, state.notebooks]);
+
+  return html`
+    <${AppContext.Provider} value=${{
+      state, setState, createNotebook,
+      sendMessage, persistMessages,
+      addReaction, confirmReaction, removeReaction
+    }}>
+      <div class="App ${state.selectedNotebook?'show-chat':''}">
+        <${ChatList}/>
+        <${ChatScreen} inputRef=${inputRef}/>
+        ${state.createModal && html`<${CreateModal}/>`}
+        ${state.crossReplyModal && html`<${CrossReplyModal}/>`}
+        ${state.showSettings && html`<${SettingsModal}/>`}
+        ${state.showAppSettings && html`<${AppSettingsModal}/>`}
+        ${state.contextMenu.visible && html`<${ContextMenu}/>`}
+        ${state.dateTimeModal!==null && html`<${DateTimeModal}/>`}
+        ${state.searchModal.visible && html`<${SearchModal}/>`}
+      </div>
+    <//>
+  `;
+}
+
+function ChatList() {
+  const {state,setState} = useContext(AppContext);
+  return html`
+    <div class="ChatList">
+      <div class="ChatList-header">
+        <button onClick=${()=>setState(s=>({...s,createModal:true}))}>＋</button>
+        <button onClick=${()=>setState(s=>({...s,searchModal:{visible:true,global:true,query:''}}))}>🔍</button>
+        <button onClick=${()=>setState(s=>({...s,showAppSettings:true}))}>⚙️</button>
+      </div>
+      ${state.notebooks.sort((a,b)=>{
+        const ta=Math.max(a.created,...(state.messages[a.id]||[]).map(m=>m.timestamp));
+        const tb=Math.max(b.created,...(state.messages[b.id]||[]).map(m=>m.timestamp));
+        return tb-ta;
+      }).map(notebook=>html`
+        <button class="NotebookButton" key=${notebook.id}
+                onClick=${()=>setState(s=>({...s,selectedNotebook:notebook.id}))}>
+          <div class="NotebookTitle">
+            <div class="NotebookEmoji" style=${{background:notebook.color}}>${notebook.emoji}</div>
+            <h4 class="NotebookName">${notebook.name}</h4>
+          </div>
+          <div class="NotebookDescription">${notebook.description||'<em>No description</em>'}</div>
+          <div class="NotebookPreview">
+            ${(()=>{const arr=state.messages[notebook.id]||[];return arr.length?arr[arr.length-1].content:'No messages';})()}
+          </div>
+        </button>
+      `)}
+    </div>
+  `;
+}
+
+function ChatScreen({inputRef}) {
+  const { state, setState, sendMessage } = useContext(AppContext);
+  const notebook = getNotebook(state.notebooks, state.selectedNotebook);
+  let messages = state.messages[notebook?.id] || [];
+  messages = [...messages].sort((a,b)=>a.timestamp-b.timestamp);
+
+  // Scroll on request
+  useEffect(()=>{
+    if (state.scrollToMessage!=null) {
+      document.querySelector(`[data-msg-id="${state.scrollToMessage}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setState(s => ({ ...s, scrollToMessage:null }));
+    }
+  }, [state.scrollToMessage, state.selectedNotebook]);
+
+  if (!notebook) return null;
+  return html`
+    <div class="ChatScreen">
+      <div class="ChatHeader" onClick=${()=>setState(s=>({...s,showSettings:true}))}>
+        <button class="BackButton"
+          onClick=${e => {
+            e.stopPropagation();
+            setState(s => ({ ...s, selectedNotebook: null }));
+          }}>
+          ←
+        </button>
+        <div class="NotebookEmoji" style=${{ background: notebook.color }}>${notebook.emoji}</div>
+        <h3>${notebook.name}</h3>
+        <button class="SearchButton"
+          onClick=${e => {
+            e.stopPropagation();
+            setState(s => ({ ...s, searchModal: { visible: true, global: false, query: '' }}));
+          }}>
+          🔍
+        </button>
+      </div>
+      <div class="Messages">
+        ${messages.map((m,i) => html`<${Message} m=${m} i=${i} />`)}
+      </div>
+      <div class="SendBar">
+        ${state.replyingTo && html`
+          <div class="ReplyPreview">
+            <span>Replying to: ${
+              (state.messages[state.replyingTo.notebookId]||[]).find(x=>x.id===state.replyingTo.id)?.content||''
+            }</span>
+            <button onClick=${()=>setState(s=>({...s,replyingTo:null}))}>×</button>
+          </div>`}
+        <textarea ref=${inputRef} class="EditArea"
+          onKeyPress=${e=>e.key==='Enter'&&!e.shiftKey&&sendMessage()}/>
+        <button onClick=${sendMessage}>${state.editingMessage!=null?'Save':'Send'}</button>
+      </div>
+    </div>
+  `;
+}
+
+function Message({m,i}) {
+  const {
+    state, setState,
+    addReaction, confirmReaction, removeReaction
+  } = useContext(AppContext);
+  return html`
+    <div class="Message" data-msg-id=${m.id}
+          onContextMenu=${e=>{e.preventDefault();setState(s=>({...s,contextMenu:{visible:true,messageIndex:i,x:e.clientX,y:e.clientY}}));}}
+          onTouchStart=${e=>{e.preventDefault();const t=e.touches[0];setState(s=>({...s,contextMenu:{visible:true,messageIndex:i,x:t.clientX,y:t.clientY}}));}}>
+      ${m.replyTo&&html`
+        <div class="ReplyIndicator"
+              onClick=${()=>setState(s=>({
+                ...state,
+                selectedNotebook:m.replyTo.notebookId,
+                scrollToMessage:m.replyTo.id
+              }))}>
+          Reply to "${(state.messages[m.replyTo.notebookId]||[]).find(x=>x.id===m.replyTo.id)?.content||''}"
+        </div>`}
+      <div dangerouslySetInnerHTML=${{__html:linkify(m.content)}}/>
+      <div class="reactions">
+        ${m.reactions.map(r=>html`
+          <button onClick=${()=>removeReaction(i,r)}>${r}</button>
+        `)}
+        ${state.reactionInputFor===i
+          ? html`<input class="ReactionInput" maxlength="2" autofocus
+              onKeyPress=${e=>e.key==='Enter'&&(confirmReaction(i,e.target.value), e.target.value='')} />`
+          : html`<button class="AddReactionBtn" onClick=${()=>addReaction(i)}>➕</button>`
+        }
+      </div>
+      <div class="Timestamp">${new Date(m.timestamp).toLocaleString()}${m.edited ? ' (edited)' : ''}</div>
+    </div>
+  `
+}
+
+function CreateModal() {
+  const {createNotebook,setState} = useContext(AppContext);
+  return html`
+    <div class="CreateModal">
+      <h3>Create Notebook</h3>
+      <button onClick=${() => createNotebook('local')}>Local Notebook</button>
+      <button onClick=${() => createNotebook('remote')}>Remote Notebook</button>
+      <button onClick=${() => setState(s => ({ ...s, createModal: false }))}>Cancel</button>
+    </div>
+  `;
+}
+
+function CrossReplyModal() {
+  const {state,setState} = useContext(AppContext);
+  return html`
+    <div class="CrossReplyModal">
+      <h3>Reply in Another Notebook</h3>
+      ${state.notebooks.filter(n=>n.id!==state.crossReplySource.notebook).map(n=>html`
+        <button onClick=${() => setState(s => ({ ...s,
+          selectedNotebook: n.id,
+          replyingTo: { notebookId: s.crossReplySource.notebook, id: s.crossReplySource.id },
+          crossReplyModal: false,
+        }))}>${n.emoji} ${n.name}</button>
+      `)}
+      <button onClick=${() => setState(s => ({ ...s, crossReplyModal: false }))}>Cancel</button>
+    </div>
+  `;
+}
+
+function ContextMenu() {
+  const {state,setState,persistMessages} = useContext(AppContext);
+  const idx = state.contextMenu.messageIndex;
+  const nbId = state.selectedNotebook;
+  const arr = state.messages[nbId] || [];
+  const msg = arr[idx];
+  const handle = action => {
+    let newArr;
+    switch(action){
+      case 'reply':
+        setState(s => ({ ...s, replyingTo: { notebookId: nbId, id: msg.id }, ...closedContextMenu(s) }));
+        return;
+      case 'cross-reply':
+        setState(s => ({ ...s, ...closedContextMenu(s), crossReplyModal: true, crossReplySource: { notebook: nbId, id: msg.id }}));
+        return;
+      case 'edit':
+        setState(s => ({ ...s, editingMessage: idx, ...closedContextMenu(s) }));
+        return;
+      case 'datetime':
+        setState(s => ({ ...s, dateTimeModal: idx, ...closedContextMenu(s) }));
+        return;
+      case 'delete':
+        newArr=arr.filter((_,i)=>i!==idx);
+        persistMessages(nbId, newArr);
+        setState(s => ({ ...s, messages: { ...s.messages, [nbId]: newArr }, ...closedContextMenu(s) }));
+        return;
+    }
+  };
+  return html`
+    <div class="ContextMenu" style=${`left: ${state.contextMenu.x}px; top: ${state.contextMenu.y}px;`}>
+      <div class="ContextMenuItem" onClick=${()=>handle('reply')}>Reply</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('cross-reply')}>Reply in Another Notebook</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('edit')}>Edit</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('datetime')}>Set Date/Time</div>
+      <div class="ContextMenuItem" onClick=${()=>handle('delete')}>Delete</div>
+    </div>
+  `;
+}
+
+function DateTimeModal() {
+  const {state,setState,persistMessages} = useContext(AppContext);
+  const idx=state.dateTimeModal, nbId=state.selectedNotebook;
+  const arr=state.messages[nbId]||[], msg=arr[idx];
+  const [dt,setDt]=useState('');
+  useEffect(() => (msg && setDt(new Date(msg.timestamp).toISOString().slice(0,16))), [msg]);
+  const save=()=>{
+    const ts=new Date(dt).getTime();
+    if(!isNaN(ts)){
+      const newArr=arr.map((m,i)=>i===idx?{...m,timestamp:ts}:m);
+      persistMessages(nbId,newArr);
+      setState(s=>({...s,messages:{...s.messages,[nbId]:newArr},dateTimeModal:null}));
+    }
+  };
+  return html`
+    <div class="DateTimeModal">
+      <h3>Set Date/Time</h3>
+      <input type="datetime-local" value=${dt} onChange=${e=>setDt(e.target.value)}/>
+      <button onClick=${save}>Save</button>
+      <button onClick=${()=>setState(s=>({...s,dateTimeModal:null}))}>Cancel</button>
+    </div>
+  `;
+}
+
+function SettingsModal() {
+  const {state,setState} = useContext(AppContext);
+  const notebook = getNotebook(state.notebooks, state.selectedNotebook);
+  const [form,setForm]=useState({...notebook});
+  const save=()=>setState(s=>({...s,notebooks:s.notebooks.map(n=>n.id===notebook.id?form:n),showSettings:false}));
+  const del=()=>{
+    if(confirm('Delete?')){
+      if(notebook.sourceType==='local') localStorage.removeItem(`notebook-${notebook.id}`);
+      setState(s=>({...s,notebooks:s.notebooks.filter(n=>n.id!==notebook.id),messages:{...s.messages,[notebook.id]:undefined},encrypted:{...s.encrypted,[notebook.id]:undefined},selectedNotebook:null,showSettings:false}));
+    }
+  };
+  return html`
+    <div class="CreateModal">
+      <h3>Settings</h3>
+      <label>Name:<input value=${form.name} onChange=${e=>setForm(f=>({...f,name:e.target.value}))}/></label><br/>
+      <label>Emoji:<input value=${form.emoji} maxLength="2" onChange=${e=>setForm(f=>({...f,emoji:e.target.value}))}/></label><br/>
+      <label>Color:<input type="color" value=${form.color} onChange=${e=>setForm(f=>({...f,color:e.target.value}))}/></label><br/>
+      <label>Description:<input value=${form.description} onChange=${e=>setForm(f=>({...f,description:e.target.value}))}/></label><br/>
+      <label>Parse Mode:<select value=${form.parseMode} onChange=${e=>setForm(f=>({...f,parseMode:e.target.value}))}>
+        <option value="plaintext">Plaintext</option>
+      </select></label><br/><br/>
+      <button onClick=${save}>Save</button>
+      <button onClick=${del} style="color:red">Delete</button>
+      <button onClick=${()=>setState(s=>({...s,showSettings:false}))}>Close</button>
+    </div>
+  `;
+}
+
+function SearchModal() {
+  const {state,setState} = useContext(AppContext);
+  const {query,global} = state.searchModal;
+  const results=(global
+    ? state.notebooks.flatMap(notebook => (state.messages[notebook.id] || []).map(message => ({ ...message, notebook })))
+    : (state.messages[state.selectedNotebook] || []).map(message => ({ ...message, notebook: getNotebook(state.notebooks, state.selectedNotebook) }))
+  ).filter(message => message.content.toLowerCase().includes(query.toLowerCase()));
+  const select = (nbId,mId) => setState(s => ({ ...s, selectedNotebook: nbId, searchModal: { ...s.searchModal, visible: false }, scrollToMessage: mId }));
+  return html`
+    <div class="SearchModal">
+      <h3>${global ? 'Global' : 'Notebook'} Search</h3>
+      <input placeholder="Search..." value=${query} onInput=${e => setState(s => ({ ...s, searchModal: { ...s.searchModal, query: e.target.value }}))}/>
+      ${results.map(result => html`
+        <div class="SearchResult" onClick=${() => select(result.notebook.id, result.id)}>
+          ${global && html`<div class="NotebookTitle">
+            <div class="NotebookEmoji" style=${{ background: result.notebook.color }}>${result.notebook.emoji}</div>
+            <strong>${result.notebook.name}</strong>
+          </div>`}
+          <div>${result.content}</div><em>${new Date(result.timestamp).toLocaleString()}</em>
+        </div>
+      `)}
+      <button onClick=${()=>setState(s=>({...s,searchModal:{...s.searchModal,visible:false}}))}>Close</button>
+    </div>
+  `;
+}
+
+function AppSettingsModal() {
+  const {state,setState} = useContext(AppContext);
+  const exportData = () => JSON.stringify({ notebooks: state.notebooks, encrypted: state.encrypted }, null, 2);
+  const [txt,setTxt] = useState('');
+  const doImport = () => {
+    try {
+      const obj = JSON.parse(txt);
+      if (obj.notebooks && obj.encrypted) {
+        localStorage.setItem('notebooks', JSON.stringify(obj.notebooks));
+        Object.entries(obj.encrypted).forEach(([id,arr]) => localStorage.setItem(`notebook-${id}`, JSON.stringify(arr)));
+        window.location.reload();
+      } else {
+        alert('Invalid format');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Invalid JSON');
+    }
+  };
+  return html`
+    <div class="AppSettingsModal">
+      <h3>App Settings</h3>
+      <h4>Export Data</h4><textarea readonly rows="8">${exportData()}</textarea>
+      <h4>Import Data</h4><textarea rows="6" placeholder="Paste JSON" onInput=${e => setTxt(e.target.value)}/>
+      <button onClick=${doImport}>Import</button>
+      <button onClick=${() => setState(s => ({ ...s, showAppSettings:false }))}>Close</button>
+    </div>
+  `;
+}
+
+render(html`<${App}/>`, document.body);
 </script>
 </body>
 </html>
