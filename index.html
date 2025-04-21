@@ -1343,22 +1343,22 @@ render(html`<${App}/>`, document.body);
 
     .ChatScreen { flex: 1; display: none; flex-direction: column; background: #efeae2; }
     .App.show-chat .ChatScreen { display: flex; }
-    .ChatHeader { background:var(--header-bg); padding:.5rem; display:flex; align-items:center; gap:.5rem; border-bottom:1px solid #ddd; cursor:pointer; }
+    .ChatHeader { background:var(--header-bg); padding: .5rem; display: flex; align-items: center; gap: .5rem; border-bottom: 1px solid #ddd; cursor: pointer; }
     .ChatHeader h3 { margin: 0; flex: 1; font-size: 1rem; }
     .BackButton, .SearchButton { font-size: 1.5rem; padding: .25rem; background: none; border: none; cursor: pointer; }
 
-    .Messages { flex:1; overflow-y:auto; padding:1rem; display:flex; flex-direction:column; gap:.5rem; }
-    .Message { background:white; padding:.5rem 1rem; border-radius:.5rem; max-width:70%; word-break:break-word; margin:.5rem auto; position:relative; }
-    .Message .reactions { display:flex; gap:.25rem; margin-top:.25rem; }
+    .Messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .5rem; }
+    .Message { background: white; padding: .5rem 1rem; border-radius: .5rem; max-width: 70%; word-break: break-word; margin: .5rem auto; position: relative; }
+    .Message .reactions { display: flex; gap: .25rem; margin-top: .25rem; }
     .Message .reactions button { background: #f5f5f5; border: none; border-radius: .25rem; padding: 0 .5rem; cursor: pointer; }
     .Message iframe { border: none; }
     .AddReactionBtn { font-size: .9rem; background: none; border: none; cursor: pointer; color: var(--whatsapp-green); }
     .ReactionInput { width: 2rem; padding: .1rem; font-size: 1rem; }
     .Timestamp { font-size: .75rem; color: #666; margin-top: .25rem; text-align: right; }
 
-    .SendBar { display:flex; gap:.5rem; padding:1rem; background:white; border-top:1px solid #ddd; flex-direction:column; }
-    .ReplyPreview { background:#f5f5f5; padding:.5rem; border-radius:.25rem; display:flex; justify-content:space-between; align-items:center; }
-    .EditArea { flex:1; padding:.5rem; border:1px solid #ddd; border-radius:.5rem; resize:none; }
+    .SendBar { display: flex; gap: .5rem; padding: 1rem; background: white; border-top: 1px solid #ddd; flex-direction: column; }
+    .ReplyPreview { background: #f5f5f5; padding: .5rem; border-radius: .25rem; display: flex; justify-content: space-between; align-items: center; }
+    .EditArea { flex: 1; padding: .5rem; border: 1px solid #ddd; border-radius: .5rem; resize: none; }
 
     .ContextMenu {
       position: fixed; z-index: 1000; min-width: 140px;
@@ -1391,6 +1391,7 @@ render(html`<${App}/>`, document.body);
       .App.show-chat .ChatScreen { display: flex; }
     }
   </style>
+  <script src="../Downloads/localforage.min.js"></script>
 </head>
 <body>
 <script type="module">
@@ -1398,6 +1399,7 @@ import { h, render, createContext } from 'https://esm.sh/preact';
 import { useState, useEffect, useCallback, useRef, useContext } from 'https://esm.sh/preact/hooks';
 import htm from 'https://esm.sh/htm';
 const html = htm.bind(h), AppContext = createContext();
+localforage.config({ name: "WhichNot" });
 
 const uuidv7 = () => {
   const bytes = new Uint8Array(16);
@@ -1482,12 +1484,12 @@ function App() {
 
   // Load & decrypt
   useEffect(() => {
-    const raw=JSON.parse(localStorage.getItem('notebooks')) || [],
-          enc={}, msgs={};
     (async () => {
+      const raw = await localforage.getItem('notebooks') || [],
+          enc = {}, msgs = {};
       for (const notebook of raw) {
-        const arr=JSON.parse(localStorage.getItem(`notebook-${notebook.id}`)) || [];
-        enc[notebook.id]=arr;
+        const arr = await localforage.getItem(`notebook-${notebook.id}`) || [];
+        enc[notebook.id] = arr;
         const rawKey = await getAesRawKey(notebook.aesKeyB64);
         const plain = {}; // [];
         for (const e of Object.values(arr)) { // arr) {
@@ -1502,11 +1504,11 @@ function App() {
   }, []);
 
   // Persist notebooks meta
-  useEffect(() => localStorage.setItem('notebooks', JSON.stringify(state.notebooks)), [state.notebooks]);
+  useEffect(() => localforage.setItem('notebooks', state.notebooks), [state.notebooks]);
   // Persist encrypted store
   useEffect(() => {
     for (const id in state.encrypted) {
-      localStorage.setItem(`notebook-${id}`, JSON.stringify(state.encrypted[id]));
+      localforage.setItem(`notebook-${id}`, state.encrypted[id]);
     }
   }, [state.encrypted]);
 
@@ -1559,6 +1561,13 @@ function App() {
     return (messageId ? messages[messageId] : messages);
     // return (messageId ? messages.find(message => (message.id === messageId)) : messages);
   }, [state.messages]);
+  const saveMessage = (notebookId, message) => persistMessages(notebookId, Object.values({ ...getMessages(notebookId), [message.id]: message }));
+  const deleteMessage = (notebookId, messageId) => {
+    const messages = getMessages(notebookId);
+    delete messages[messageId];
+    persistMessages(notebookId, Object.values(messages));
+    // setState(s => ({ ...s, messages: { ...s.messages, [nbId]: messages } }));
+  };
 
   const persistMessages = useCallback(async(nbId, plainArr) => {
     const notebook = getNotebook(nbId);
@@ -1584,18 +1593,28 @@ function App() {
     // }
   }, [state.notebooks]);
 
-  const addReaction = useCallback(idx => setState(s => ({ ...s, reactionInputFor: idx })), []);
-  const confirmReaction = useCallback(async(idx,emoji)=>{
-    if(!emoji) return setState(s=>({...s,reactionInputFor:null}));
-    const nbId=state.selectedNotebook, arr=state.messages[nbId]||[];
-    const newArr=arr.map((m,i)=>i===idx?{...m,reactions:m.reactions.includes(emoji)?m.reactions:[...m.reactions,emoji]}:m);
-    await persistMessages(nbId,newArr);
-    setState(s=>({...s,reactionInputFor:null}));
+  const addReaction = useCallback(messageId => setState(s => ({ ...s, reactionInputFor: messageId })), []);
+  const confirmReaction = useCallback(async (idx, emoji) => {
+    if (!emoji) return;
+    setState(s => ({ ...s, reactionInputFor: null }));
+    const nbId = state.selectedNotebook;
+    //const arr = state.messages[nbId] || [];
+    //const newArr = arr.map((m, i) => i===idx ? { ...m, reactions: (m.reactions.includes(emoji) ? m.reactions : [...m.reactions, emoji]) } : m);
+    //const newArr = getMessages(nbId);
+    //const m = newArr[idx];
+    //newArr[idx] = { ...m, reactions: (m.reactions.includes(emoji) ? m.reactions : [...m.reactions, emoji]) }
+    //await persistMessages(nbId, newArr);
+    const message = getMessages(nbId, idx);
+    if (!message.reactions.includes(emoji)) {
+      message.reactions = [...message.reactions, emoji];
+      saveMessage(nbId, message);
+    }
+    setState(s => ({ ...s, reactionInputFor: null }));
   },[state.selectedNotebook, state.messages, persistMessages]);
-  const removeReaction = useCallback(async (idx,emoji) => {
+  const removeReaction = useCallback(async (idx, emoji) => {
     const nbId = state.selectedNotebook;
     const arr = state.messages[nbId] || [];
-    const newArr = arr.map((m,i) => i===idx ? { ...m, reactions: m.reactions.filter(r=>r!==emoji) } : m);
+    const newArr = arr.map((m,i) => i===idx ? { ...m, reactions: m.reactions.filter(r => r!==emoji) } : m);
     await persistMessages(nbId, newArr);
   }, [state.selectedNotebook, state.messages, persistMessages]);
 
@@ -1606,7 +1625,6 @@ function App() {
       if (message) {
         inputRef.current.value = message.text;
       }
-      console.log(state, message, state.messages[state.selectedNotebook]);
     }
   }, [state.editingMessage, state.selectedNotebook, state.messages]);
 
@@ -1645,13 +1663,6 @@ function App() {
     await persistMessages(nbId, newArr);
   }, [state.selectedNotebook, state.editingMessage, state.replyingTo, state.messages, state.notebooks]);
 
-  const deleteMessage = (notebookId, messageId) => {
-    const messages = getMessages(notebookId);
-    delete messages[messageId];
-    persistMessages(notebookId, Object.values(messages));
-    // setState(s => ({ ...s, messages: { ...s.messages, [nbId]: messages } }));
-  };
-
   return html`
     <${AppContext.Provider} value=${{
       state, setState, createNotebook,
@@ -1681,12 +1692,12 @@ function ChatList() {
     <div class="ChatList">
       <div class="ChatList-header">
         <button onClick=${() => setState(s => ({ ...s, createModal: true }))}>＋</button>
-        <button onClick=${() => setState(s => ({ ...s, searchModal: { visible: true, global: true, query: '' } }))}>🔍</button>
+        <!-- <button onClick=${() => setState(s => ({ ...s, searchModal: { visible: true, global: true, query: '' } }))}>🔍</button> -->
         <button onClick=${() => setState(s => ({ ...s, showAppSettings: true }))}>⚙️</button>
       </div>
-      ${state.notebooks.sort((a,b) => (sortNotebook(b) - sortNotebook(a))).map(notebook => html`
+      ${state.notebooks.sort((a, b) => (sortNotebook(b) - sortNotebook(a))).map(notebook => html`
         <button class="NotebookButton" key=${notebook.id}
-                onClick=${()=>setState(s=>({ ...s, selectedNotebook: notebook.id }))}>
+                onClick=${() => setState(s => ({ ...s, selectedNotebook: notebook.id }))}>
           <div class="NotebookTitle">
             <div class="NotebookEmoji" style=${{ background: notebook.color }}>${notebook.emoji}</div>
             <h4 class="NotebookName">${notebook.name}</h4>
@@ -1711,7 +1722,7 @@ function ChatScreen({inputRef}) {
   messages = /* [...messages] */ Object.values(messages).sort((a,b) => (a.timestamp - b.timestamp));
 
   // Scroll on request
-  useEffect(()=>{
+  useEffect(() => {
     // Array.from(document.querySelectorAll(`.Message[data-msg-id${state.scrollToMessage!=null ? `="${state.scrollToMessage}"` : ''}]`)).slice(-1)[0]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     if (state.scrollToMessage!=null) {
       document.querySelector(`[data-message-id="${state.scrollToMessage}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1733,13 +1744,13 @@ function ChatScreen({inputRef}) {
         </button>
         <div class="NotebookEmoji" style=${{ background: notebook.color }}>${notebook.emoji}</div>
         <h3>${notebook.name}</h3>
-        <button class="SearchButton"
+        <!-- <button class="SearchButton"
           onClick=${ev => {
             ev.stopPropagation();
             setState(s => ({ ...s, searchModal: { visible: true, global: false, query: '' }}));
           }}>
           🔍
-        </button>
+        </button> -->
       </div>
       <div class="Messages">
         ${messages.map(message => html`
@@ -1918,7 +1929,7 @@ function SettingsModal() {
   const del = () => {
     if (confirm('Delete?')) {
       if (notebook.sourceType==='local') {
-        localStorage.removeItem(`notebook-${notebook.id}`);
+        localforage.removeItem(`notebook-${notebook.id}`);
       }
       setState(s => ({ ...s,
         notebooks: s.notebooks.filter(n => n.id!==notebook.id),
@@ -1973,14 +1984,14 @@ function SearchModal() {
 
 function AppSettingsModal() {
   const {state,setState} = useContext(AppContext);
-  const exportData = () => JSON.stringify({ notebooks: state.notebooks, encrypted: state.encrypted }, null, 2);
+  const exportData = () => JSON.stringify({ notebooks: state.notebooks, encrypted: /* Object.fromEntries(Object.entries( */ state.encrypted /* ).map(([key, values]) => ([key, Object.values(values)]))) */ }, null, 2);
   const [txt,setTxt] = useState('');
   const doImport = () => {
     try {
       const obj = JSON.parse(txt);
       if (obj.notebooks && obj.encrypted) {
-        localStorage.setItem('notebooks', JSON.stringify(obj.notebooks));
-        Object.entries(obj.encrypted).forEach(([id,arr]) => localStorage.setItem(`notebook-${id}`, JSON.stringify(arr)));
+        localforage.setItem('notebooks', obj.notebooks);
+        Object.entries(obj.encrypted).forEach(([id,arr]) => localforage.setItem(`notebook-${id}`, arr));
         window.location.reload();
       } else {
         alert('Invalid format');
