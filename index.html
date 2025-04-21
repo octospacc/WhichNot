@@ -1411,7 +1411,7 @@ const uuidv7 = () => {
   bytes[5] = Number(timestamp & 0xffn);
   bytes[6] = (bytes[6] & 0x0f) | 0x70;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const chars = Array.from(bytes).map(b => b.toString(16).padStart(2, '0'));
+  const chars = Array.from(bytes).map(byte => byte.toString(16).padStart(2, '0'));
   [10, 8, 6, 4].forEach(pos => chars.splice(pos, 0, '-'));
   return chars.join('');
 }
@@ -1432,16 +1432,39 @@ const deriveMsgKey = async (rawKey, salt) => crypto.subtle.deriveKey(
   await crypto.subtle.importKey('raw', rawKey, 'HKDF', false, ['deriveKey']), 
   { name: 'AES-GCM', length: 256 }, 
   true, ['encrypt', 'decrypt']);
+const getAesRawKey = async (aesKeyB64) => await crypto.subtle.exportKey('raw', await importJWK(aesKeyB64, { name: 'AES-GCM' }, ['encrypt','decrypt']));
 
-const escapeHtml = txt => {
+const encryptMessage = async (message, rawKey) => {
+  const salt = randBytes();
+  const iv = randBytes(12);
+  const key = await deriveMsgKey(rawKey, salt);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(message.text));
+  const encrypted = { ...message,
+    salt: bufToB64(salt),
+    iv: bufToB64(iv),
+    ciphertext: bufToB64(ct),
+  };
+  delete encrypted.text;
+  return encrypted;
+};
+const decryptMessage = async (encrypted, rawKey) => {
+  const salt = b64ToBuf(encrypted.salt);
+  const iv = b64ToBuf(encrypted.iv);
+  const key = await deriveMsgKey(rawKey, salt);
+  const ct = b64ToBuf(encrypted.ciphertext);
+  const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+  return { ...encrypted, text: new TextDecoder().decode(dec) };
+};
+
+const escapeHtml = text => {
   const node = document.createElement('p');
-  node.appendChild(document.createTextNode(txt));
+  node.appendChild(document.createTextNode(text));
   return node.innerHTML;
 }
-const makeParagraph = txt => `<p>${txt.replaceAll('\n', '<br />')}</p>`
-const linkify = txt => txt.replace(/(\bhttps?:\/\/[^\s]+)/g,'<a href="$1" target="_blank">$1</a>');
+const makeParagraph = text => `<p>${text.replaceAll('\n', '<br />')}</p>`
+const linkify = text => text.replace(/(\bhttps?:\/\/[^\s]+)/g,'<a href="$1" target="_blank">$1</a>');
+const isSimpleUrl = text => (!(text = text.toLowerCase()).includes(' ') && (text.startsWith('http://') || text.startsWith('https://')));
 
-const getNotebook = (notebooks, id) => notebooks.find(notebook => (notebook.id === id));
 const closedContextMenu = (s) => ({ contextMenu: { ...s.contextMenu, visible: false } });
 
 function App() {
@@ -1451,7 +1474,7 @@ function App() {
     showSettings: false, showAppSettings: false,
     createModal: false, dateTimeModal: null,
     crossReplyModal: false, crossReplySource: null,
-    contextMenu:{ visible: false, messageIndex: null, x: 0, y: 0 },
+    contextMenu:{ visible: false, messageId: null, x: 0, y: 0 },
     searchModal: { visible: false, global: false, query: '' },
     editingMessage: null, replyingTo: null, reactionInputFor: null,
   });
@@ -1465,16 +1488,12 @@ function App() {
       for (const notebook of raw) {
         const arr=JSON.parse(localStorage.getItem(`notebook-${notebook.id}`)) || [];
         enc[notebook.id]=arr;
-        const aes = await importJWK(notebook.aesKeyB64,{name:'AES-GCM'},['encrypt','decrypt']),
-              rawKey = await crypto.subtle.exportKey('raw', aes),
-              plain = [];
-        for (const e of arr) {
-          const salt = b64ToBuf(e.salt),
-                iv = b64ToBuf(e.iv),
-                key = await deriveMsgKey(rawKey, salt),
-                ct = b64ToBuf(e.ciphertext),
-                dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
-          plain.push({ ...e, text: new TextDecoder().decode(dec) });
+        const rawKey = await getAesRawKey(notebook.aesKeyB64);
+        const plain = {}; // [];
+        for (const e of Object.values(arr)) { // arr) {
+          //plain.push({ ...e, text: new TextDecoder().decode(dec) });
+          //plain.push(await decryptMessage(e, rawKey));
+          plain[e.id] = await decryptMessage(e, rawKey);
         }
         msgs[notebook.id] = plain;
       }
@@ -1522,8 +1541,8 @@ function App() {
     };
     setState(s => ({ ...s,
       notebooks: [ ...s.notebooks, notebook ],
-      encrypted: { ...s.encrypted, [id]: [] },
-      messages: { ...s.messages, [id]: [] },
+      encrypted: { ...s.encrypted, [id]: {} }, // [] },
+      messages: { ...s.messages, [id]: {} }, // [] },
       createModal: false,
     }));
     // if (type==='remote') {
@@ -1534,21 +1553,21 @@ function App() {
     // }
   }, [state.notebooks]);
 
-  // Persist (encrypt & sync)
-  const persistMessages = useCallback(async(nbId, plainArr)=>{
-    const notebook = getNotebook(state.notebooks, nbId);
+  const getNotebook = useCallback(notebookId => state.notebooks.find(notebook => (notebook.id === notebookId)), [state.notebooks]);
+  const getMessages = useCallback((notebookId, messageId) => {
+    const messages = state.messages[notebookId];
+    return (messageId ? messages[messageId] : messages);
+    // return (messageId ? messages.find(message => (message.id === messageId)) : messages);
+  }, [state.messages]);
+
+  const persistMessages = useCallback(async(nbId, plainArr) => {
+    const notebook = getNotebook(nbId);
     if (!notebook) return;
-    const aes=await importJWK(notebook.aesKeyB64,{name:'AES-GCM'},['encrypt','decrypt']),
-          rawKey=await crypto.subtle.exportKey('raw',aes),
-          encArr=[];
-    for(const m of plainArr){
-      const salt=randBytes(), iv=randBytes(12),
-            key=await deriveMsgKey(rawKey,salt),
-            ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(m.text));
-      encArr.push({ id:m.id, salt:bufToB64(salt), iv:bufToB64(iv),
-        ciphertext:bufToB64(ct), timestamp:m.timestamp,
-        edited:m.edited, replyTo:m.replyTo, reactions:m.reactions
-      });
+    const rawKey = await getAesRawKey(notebook.aesKeyB64);
+    const encArr = {}; // [];
+    for (const message of Object.values(plainArr)) { //plainArr){
+      //encArr.push(await encryptMessage(message, rawKey));
+      encArr[message.id] = await encryptMessage(message, rawKey);
     }
     setState(s => ({ ...s,
       encrypted: { ...s.encrypted, [nbId]: encArr },
@@ -1587,7 +1606,7 @@ function App() {
       if (message) {
         inputRef.current.value = message.text;
       }
-      //console.log(state, message);
+      console.log(state, message, state.messages[state.selectedNotebook]);
     }
   }, [state.editingMessage, state.selectedNotebook, state.messages]);
 
@@ -1597,7 +1616,7 @@ function App() {
     const text = inputRef.current.value.trim();
     if (!text) return;
     const arr = state.messages[nbId] || [];
-    const notebook = getNotebook(state.notebooks, nbId);
+    const notebook = getNotebook(nbId);
     let message = arr[state.editingMessage];
     if (!message) {
       message = {
@@ -1615,19 +1634,29 @@ function App() {
       ? { ...notebook, nextMessageId: (state.editingMessage==null ? notebook.nextMessageId+1 : notebook.nextMessageId) }
       : notebook
     ) }));
-    const newArr = (state.editingMessage!=null
-      ? arr.map((msg, i) => (i===state.editingMessage ? message : msg))
-      : [...arr, message]
-    );
+    // const newArr = (state.editingMessage!=null
+    //   ? arr.map((msg, i) => (i===state.editingMessage ? message : msg))
+    //   : { ...arr, [message.id]: message } // [...arr, message]
+    // );
+    const newArr = arr;
+    newArr[message.id] = message;
     // reset editing & replying
     setState( s => ({ ...s, editingMessage: null, replyingTo: null }));
     await persistMessages(nbId, newArr);
   }, [state.selectedNotebook, state.editingMessage, state.replyingTo, state.messages, state.notebooks]);
 
+  const deleteMessage = (notebookId, messageId) => {
+    const messages = getMessages(notebookId);
+    delete messages[messageId];
+    persistMessages(notebookId, Object.values(messages));
+    // setState(s => ({ ...s, messages: { ...s.messages, [nbId]: messages } }));
+  };
+
   return html`
     <${AppContext.Provider} value=${{
       state, setState, createNotebook,
-      sendMessage, persistMessages,
+      getNotebook, getMessages,
+      sendMessage, deleteMessage, persistMessages,
       addReaction, confirmReaction, removeReaction,
     }}>
       <div class="App ${state.selectedNotebook ? 'show-chat' : ''}">
@@ -1657,9 +1686,9 @@ function ChatList() {
       </div>
       ${state.notebooks.sort((a,b) => (sortNotebook(b) - sortNotebook(a))).map(notebook => html`
         <button class="NotebookButton" key=${notebook.id}
-                onClick=${()=>setState(s=>({...s,selectedNotebook:notebook.id}))}>
+                onClick=${()=>setState(s=>({ ...s, selectedNotebook: notebook.id }))}>
           <div class="NotebookTitle">
-            <div class="NotebookEmoji" style=${{background:notebook.color}}>${notebook.emoji}</div>
+            <div class="NotebookEmoji" style=${{ background: notebook.color }}>${notebook.emoji}</div>
             <h4 class="NotebookName">${notebook.name}</h4>
           </div>
           <div class="NotebookDescription">${notebook.description || 'No description'}</div>
@@ -1676,21 +1705,22 @@ function ChatList() {
 }
 
 function ChatScreen({inputRef}) {
-  const { state, setState, sendMessage } = useContext(AppContext);
-  const notebook = getNotebook(state.notebooks, state.selectedNotebook);
+  const { state, setState, sendMessage, getNotebook } = useContext(AppContext);
+  const notebook = getNotebook(state.selectedNotebook);
   let messages = state.messages[notebook?.id] || [];
-  messages = [...messages].sort((a,b) => (a.timestamp - b.timestamp));
+  messages = /* [...messages] */ Object.values(messages).sort((a,b) => (a.timestamp - b.timestamp));
 
   // Scroll on request
   useEffect(()=>{
     // Array.from(document.querySelectorAll(`.Message[data-msg-id${state.scrollToMessage!=null ? `="${state.scrollToMessage}"` : ''}]`)).slice(-1)[0]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     if (state.scrollToMessage!=null) {
-      document.querySelector(`[data-msg-id="${state.scrollToMessage}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      document.querySelector(`[data-message-id="${state.scrollToMessage}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setState(s => ({ ...s, scrollToMessage: null }));
     }
   }, [state.scrollToMessage, state.selectedNotebook]);
 
   if (!notebook) return null;
+
   return html`
     <div class="ChatScreen">
       <div class="ChatHeader" onClick=${() => setState(s => ({ ...s, showSettings: true }))}>
@@ -1712,8 +1742,8 @@ function ChatScreen({inputRef}) {
         </button>
       </div>
       <div class="Messages">
-        ${messages.map((m,i) => html`
-          <${Message} m=${m} i=${i} />
+        ${messages.map(message => html`
+          <${Message} message=${message} />
         `)}
       </div>
       <div class="SendBar">
@@ -1732,51 +1762,50 @@ function ChatScreen({inputRef}) {
   `;
 }
 
-function Message({m,i}) {
+function Message({message}) {
   const {
     state, setState,
     addReaction, confirmReaction, removeReaction
   } = useContext(AppContext);
   return html`
-    <div class="Message" data-msg-id=${m.id}
-          onContextMenu=${event => {
-            event.preventDefault();
-            setState(s => ({ ...s, contextMenu: { visible: true, messageIndex: i, x: event.clientX, y: event.clientY } }));
-          }}
-          onTouchStart=${event => {
-            event.preventDefault();
-            const target = event.touches[0];
-            setState(s => ({ ...s, contextMenu: { visible: true, messageIndex: i, x: target.clientX, y: target.clientY } }));
-          }}>
-      ${m.replyTo&&html`
+    <div class="Message" data-message-id=${message.id}
+      onContextMenu=${event => {
+        event.preventDefault();
+        setState(s => ({ ...s, contextMenu: { visible: true, messageId: message.id, x: event.clientX, y: event.clientY } }));
+      }}
+      onTouchStart=${event => {
+        event.preventDefault();
+        const target = event.touches[0];
+        setState(s => ({ ...s, contextMenu: { visible: true, messageId: message.id, x: target.clientX, y: target.clientY } }));
+      }}>
+      ${message.replyTo && html`
         <div class="ReplyIndicator"
               onClick=${()=>setState(s=>({
                 ...state,
-                selectedNotebook: m.replyTo.notebookId,
-                scrollToMessage: m.replyTo.id,
+                selectedNotebook: message.replyTo.notebookId,
+                scrollToMessage: message.replyTo.id,
               }))}>
-          Reply to "${(state.messages[m.replyTo.notebookId] || []).find(x => x.id===m.replyTo.id)?.text || ''}"
+          Reply to "${(state.messages[message.replyTo.notebookId] || []).find(x => x.id===message.replyTo.id)?.text || ''}"
         </div>`}
-      <div dangerouslySetInnerHTML=${{ __html: makeParagraph(linkify(escapeHtml(m.text))) }} />
+      <div dangerouslySetInnerHTML=${{ __html: makeParagraph(linkify(escapeHtml(message.text))) }} />
       ${(() => {
-        const text = m.text.toLowerCase();
-        if (!text.includes(' ') && (text.startsWith('http://') || text.startsWith('https://'))) {
+        if (isSimpleUrl(message.text)) {
           return html`<div>
-            <iframe src=${m.text}></iframe>
+            <iframe src=${message.text} sandbox></iframe>
           </div>`;
         }
       })()}
       <div class="reactions">
-        ${m.reactions.map(r => html`
-          <button onClick=${() => removeReaction(i,r)}>${r}</button>
+        ${message.reactions.map(r => html`
+          <button onClick=${() => removeReaction(message.id, r)}>${r}</button>
         `)}
-        ${state.reactionInputFor===i
+        ${state.reactionInputFor===message.id
           ? html`<input class="ReactionInput" maxlength="2" autofocus
-              onKeyPress=${e=>e.key==='Enter'&&(confirmReaction(i,e.target.value), e.target.value='')} />`
-          : html`<button class="AddReactionBtn" onClick=${()=>addReaction(i)}>➕</button>`
+              onKeyPress=${e=>e.key==='Enter'&&(confirmReaction(message.id, e.target.value), e.target.value='')} />`
+          : html`<button class="AddReactionBtn" onClick=${()=>addReaction(message.id)}>➕</button>`
         }
       </div>
-      <div class="Timestamp">${new Date(m.timestamp).toLocaleString()}${m.edited ? ' (edited)' : ''}</div>
+      <div class="Timestamp">${new Date(message.timestamp).toLocaleString()}${message.edited ? ' (edited)' : ''}</div>
     </div>
   `
 }
@@ -1813,8 +1842,8 @@ function CrossReplyModal() {
 }
 
 function ContextMenu() {
-  const {state, setState, persistMessages} = useContext(AppContext);
-  const idx = state.contextMenu.messageIndex;
+  const {state, setState, deleteMessage, persistMessages} = useContext(AppContext);
+  const idx = state.contextMenu.messageId;
   const nbId = state.selectedNotebook;
   const arr = state.messages[nbId] || [];
   const msg = arr[idx];
@@ -1838,9 +1867,10 @@ function ContextMenu() {
         setState(s => ({ ...s, dateTimeModal: idx, ...closedContextMenu(s) }));
         return;
       case 'delete':
-        newArr=arr.filter((_,i)=>i!==idx);
-        persistMessages(nbId, newArr);
-        setState(s => ({ ...s, messages: { ...s.messages, [nbId]: newArr }, ...closedContextMenu(s) }));
+        deleteMessage(nbId, idx);
+        // newArr=arr.filter((_,i)=>i!==idx);
+        // persistMessages(nbId, newArr);
+        setState(s => ({ ...s, /* messages: { ...s.messages, [nbId]: newArr }, */ ...closedContextMenu(s) }));
         return;
     }
   };
@@ -1881,8 +1911,8 @@ function DateTimeModal() {
 }
 
 function SettingsModal() {
-  const {state, setState} = useContext(AppContext);
-  const notebook = getNotebook(state.notebooks, state.selectedNotebook);
+  const {state, setState, getNotebook} = useContext(AppContext);
+  const notebook = getNotebook(state.selectedNotebook);
   const [form, setForm] = useState({ ...notebook });
   const save = () => setState(s => ({ ...s, notebooks: s.notebooks.map(n => (n.id===notebook.id ? form : n)), showSettings: false }));
   const del = () => {
@@ -1916,11 +1946,11 @@ function SettingsModal() {
 }
 
 function SearchModal() {
-  const {state, setState} = useContext(AppContext);
+  const {state, setState, getNotebook} = useContext(AppContext);
   const {query, global} = state.searchModal;
   const results = (global
     ? state.notebooks.flatMap(notebook => (state.messages[notebook.id] || []).map(message => ({ ...message, notebook })))
-    : (state.messages[state.selectedNotebook] || []).map(message => ({ ...message, notebook: getNotebook(state.notebooks, state.selectedNotebook) }))
+    : (state.messages[state.selectedNotebook] || []).map(message => ({ ...message, notebook: getNotebook(state.selectedNotebook) }))
   ).filter(message => message.text.toLowerCase().includes(query.toLowerCase()));
   const select = (nbId, mId) => setState(s => ({ ...s, selectedNotebook: nbId, searchModal: { ...s.searchModal, visible: false }, scrollToMessage: mId }));
   return html`
