@@ -1464,8 +1464,12 @@ const escapeHtml = text => {
   return node.innerHTML;
 }
 const makeParagraph = text => `<p>${text.replaceAll('\n', '<br />')}</p>`
-const linkify = text => text.replace(/(\bhttps?:\/\/[^\s]+)/g,'<a href="$1" target="_blank">$1</a>');
+const linkify = text => text.replace(/(\bhttps?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
 const isSimpleUrl = text => (!(text = text.toLowerCase()).includes(' ') && (text.startsWith('http://') || text.startsWith('https://')));
+
+const EMOJIS = ['📒','📓','📔','📕','📖','📗','📘','📙','📚','✏️','📝'];
+const randomEmoji = () => EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+const randomColor = () => ('#' + Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, '0'));
 
 const closedContextMenu = (s) => ({ contextMenu: { ...s.contextMenu, visible: false } });
 
@@ -1480,35 +1484,56 @@ function App() {
     searchModal: { visible: false, global: false, query: '' },
     editingMessage: null, replyingTo: null, reactionInputFor: null,
   });
-  const inputRef = useRef();
+  const messageInputRef = useRef();
 
   // Load & decrypt
   useEffect(() => {
     (async () => {
-      const raw = await localforage.getItem('notebooks') || [],
-          enc = {}, msgs = {};
-      for (const notebook of raw) {
-        const arr = await localforage.getItem(`notebook-${notebook.id}`) || [];
+      const notebooksList = await localforage.getItem('notebooks') || [];
+      const notebooks = [];
+      const enc = {};
+      const msgs = {};
+      for (let notebook of notebooksList) {
+        notebooks.push(notebook = await localforage.getItem(`notebooks/${notebook}`));
+        // const arr = await localforage.getItem(`notebook-${notebook.id}`) || [];
+        const arr = [];
+        const messagesList = await localforage.getItem(`messages/${notebook.id}`);
+        for (let messageId of messagesList) {
+          arr[messageId] = await localforage.getItem(`messages/${notebook.id}/${messageId}`);
+        }
         enc[notebook.id] = arr;
         const rawKey = await getAesRawKey(notebook.aesKeyB64);
         const plain = {}; // [];
+        const promises = [];
         for (const e of Object.values(arr)) { // arr) {
           //plain.push({ ...e, text: new TextDecoder().decode(dec) });
           //plain.push(await decryptMessage(e, rawKey));
-          plain[e.id] = await decryptMessage(e, rawKey);
+          //plain[e.id] = await decryptMessage(e, rawKey);
+          promises.push(decryptMessage(e, rawKey).then(message => plain[e.id] = message));
         }
+        await Promise.all(promises);
         msgs[notebook.id] = plain;
       }
-      setState(s => ({ ...s, notebooks: raw, encrypted: enc, messages: msgs }));
+      setState(s => ({ ...s, notebooks, encrypted: enc, messages: msgs }));
     })();
   }, []);
 
   // Persist notebooks meta
-  useEffect(() => localforage.setItem('notebooks', state.notebooks), [state.notebooks]);
+  useEffect(() => {
+    for (const notebook of state.notebooks) {
+      localforage.setItem(`notebooks/${notebook.id}`, notebook);
+    }
+    localforage.setItem('notebooks', state.notebooks.map(notebook => notebook.id));
+  }, [state.notebooks]);
+
   // Persist encrypted store
   useEffect(() => {
-    for (const id in state.encrypted) {
-      localforage.setItem(`notebook-${id}`, state.encrypted[id]);
+    for (const notebookId in state.encrypted) {
+      // localforage.setItem(`notebook-${id}`, state.encrypted[id]);
+      localforage.setItem(`messages/${notebookId}`, Object.keys(state.encrypted[notebookId]));
+      for (const message of Object.values(state.encrypted[notebookId])) {
+        localforage.setItem(`messages/${notebookId}/${message.id}`, message);
+      }
     }
   }, [state.encrypted]);
 
@@ -1527,19 +1552,16 @@ function App() {
   }, [state.contextMenu.visible]);
 
   const createNotebook = useCallback(async (type) => {
-    let id = (type === 'local' ? generateUUID() : prompt('Remote ID:'));
+    let id = /* (type === 'local' ? */ generateUUID(); /* : prompt('Remote ID:')); */
     // if (!id) return;
-    const now=Date.now(), aes=await genAESKey(); // , ed=await genEd25519();
-    const aesB64 = await exportJWK(aes); // , privB64=await exportJWK(ed.privateKey), pubB64=await exportJWK(ed.publicKey);
-    const EMOJIS = ['📒','📓','📔','📕','📖','📗','📘','📙','📚','✏️','📝'];
-    const randomEmoji = () => EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
-    const randomColor = () => ('#' + Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, '0'));
+    const now = Date.now();
+    // const ed = await genEd25519();
     const notebook = {
-      id, name: `Notebook ${now}`,
+      id, name: `Notebook ${now}`, description: '',
       emoji: randomEmoji(), color: randomColor(),
-      sourceType: type, description: '', parseMode: 'plaintext',
+      // parseMode: 'plaintext', // sourceType: type,
       nextMessageId: 1, created: now,
-      aesKeyB64: aesB64, // edPrivB64: privB64, edPubB64: pubB64,
+      aesKeyB64: await exportJWK(await genAESKey()), // edPrivB64: await exportJWK(ed.privateKey), edPubB64: await exportJWK(ed.publicKey),
     };
     setState(s => ({ ...s,
       notebooks: [ ...s.notebooks, notebook ],
@@ -1556,20 +1578,38 @@ function App() {
   }, [state.notebooks]);
 
   const getNotebook = useCallback(notebookId => state.notebooks.find(notebook => (notebook.id === notebookId)), [state.notebooks]);
-  const getMessages = useCallback((notebookId, messageId) => {
-    const messages = state.messages[notebookId];
-    return (messageId ? messages[messageId] : messages);
-    // return (messageId ? messages.find(message => (message.id === messageId)) : messages);
-  }, [state.messages]);
-  const saveMessage = (notebookId, message) => persistMessages(notebookId, Object.values({ ...getMessages(notebookId), [message.id]: message }));
+  const deleteNotebook = (notebookId) => {
+    const messagesList = Object.keys(getMessages(notebookId));
+    setState(s => ({ ...s,
+      notebooks: s.notebooks.filter(notebook => notebook.id!==notebookId),
+      messages: { ...s.messages, [notebookId]: undefined },
+      encrypted: { ...s.encrypted, [notebookId]: undefined },
+    }));
+    localforage.removeItem(`notebooks/${notebookId}`);
+    localforage.removeItem(`messages/${notebookId}`);
+    for (const messageId of messagesList) {
+      localforage.removeItem(`messages/${notebookId}/${messageId}`);
+    }
+  };
+
+  const getMessages = useCallback((notebookId /* , messageId */) => state.messages[notebookId], [state.messages]); // {
+//    const messages = state.messages[notebookId];
+//    return (messageId ? messages[messageId] : messages);
+//    // return (messageId ? messages.find(message => (message.id === messageId)) : messages);
+//  }, [state.messages]);
+  const getMessage = useCallback((notebookId, messageId) => getMessages(notebookId)[messageId], [state.messages]);
+
+  const saveMessage = (notebookId, message) => persistMessages(notebookId, /* Object.values( */ { ...getMessages(notebookId), [message.id]: message } /* ) */);
   const deleteMessage = (notebookId, messageId) => {
     const messages = getMessages(notebookId);
     delete messages[messageId];
-    persistMessages(notebookId, Object.values(messages));
+    persistMessages(notebookId, /* Object.values( */ messages /* ) */);
+    localforage.removeItem(`messages/${notebookId}/${messageId}`);
     // setState(s => ({ ...s, messages: { ...s.messages, [nbId]: messages } }));
   };
+  const copyMessage = message => navigator.clipboard.writeText(message.text);
 
-  const persistMessages = useCallback(async(nbId, plainArr) => {
+  const persistMessages = useCallback(async (nbId, plainArr) => {
     const notebook = getNotebook(nbId);
     if (!notebook) return;
     const rawKey = await getAesRawKey(notebook.aesKeyB64);
@@ -1604,26 +1644,31 @@ function App() {
     //const m = newArr[idx];
     //newArr[idx] = { ...m, reactions: (m.reactions.includes(emoji) ? m.reactions : [...m.reactions, emoji]) }
     //await persistMessages(nbId, newArr);
-    const message = getMessages(nbId, idx);
-    if (!message.reactions.includes(emoji)) {
-      message.reactions = [...message.reactions, emoji];
+    const message = getMessage(nbId, idx);
+    if (!(emoji in message.reactions)) { // (!message.reactions.includes(emoji)) {
+      message.reactions[emoji] = true; // [...message.reactions, emoji];
       saveMessage(nbId, message);
     }
     setState(s => ({ ...s, reactionInputFor: null }));
-  },[state.selectedNotebook, state.messages, persistMessages]);
+  }, [state.selectedNotebook, state.messages, persistMessages]);
   const removeReaction = useCallback(async (idx, emoji) => {
     const nbId = state.selectedNotebook;
-    const arr = state.messages[nbId] || [];
-    const newArr = arr.map((m,i) => i===idx ? { ...m, reactions: m.reactions.filter(r => r!==emoji) } : m);
-    await persistMessages(nbId, newArr);
+    //const arr = state.messages[nbId] || [];
+    //const newArr = arr.map((m,i) => i===idx ? { ...m, reactions: m.reactions.filter(r => r!==emoji) } : m);
+    //await persistMessages(nbId, newArr);
+    const message = getMessage(nbId, idx);
+    if (emoji in message.reactions) {
+      delete message.reactions[emoji];
+      saveMessage(nbId, message);
+    }
   }, [state.selectedNotebook, state.messages, persistMessages]);
 
   // Editing effect: prefill textarea when entering edit mode
   useEffect(() => {
-    if (state.editingMessage!=null && inputRef.current) {
+    if (state.editingMessage!=null && messageInputRef.current) {
       const message = state.messages[state.selectedNotebook]?.[state.editingMessage];
       if (message) {
-        inputRef.current.value = message.text;
+        messageInputRef.current.value = message.text;
       }
     }
   }, [state.editingMessage, state.selectedNotebook, state.messages]);
@@ -1631,22 +1676,22 @@ function App() {
   const sendMessage = useCallback(async () => {
     const nbId = state.selectedNotebook;
     if (!nbId) return;
-    const text = inputRef.current.value.trim();
+    const text = messageInputRef.current.value.trim();
     if (!text) return;
-    const arr = state.messages[nbId] || [];
+    //const arr = state.messages[nbId] || [];
     const notebook = getNotebook(nbId);
-    let message = arr[state.editingMessage];
+    let message = getMessage(nbId, state.editingMessage); // arr[state.editingMessage];
     if (!message) {
       message = {
         id: notebook.nextMessageId,
-        timestamp: Date.now(),
+        created/*timestamp*/: Date.now(),
         edited: state.editingMessage!=null,
         replyTo: state.replyingTo,
-        reactions: [],
+        reactions: {}, // [],
       };
     }
     message = { ...message, text };
-    inputRef.current.value = '';
+    messageInputRef.current.value = '';
     // update nextMessageId if new
     setState(s => ({ ...s, notebooks: s.notebooks.map(notebook => notebook.id===nbId
       ? { ...notebook, nextMessageId: (state.editingMessage==null ? notebook.nextMessageId+1 : notebook.nextMessageId) }
@@ -1656,23 +1701,26 @@ function App() {
     //   ? arr.map((msg, i) => (i===state.editingMessage ? message : msg))
     //   : { ...arr, [message.id]: message } // [...arr, message]
     // );
-    const newArr = arr;
-    newArr[message.id] = message;
+    //const newArr = arr;
+    //newArr[message.id] = message;
     // reset editing & replying
+    saveMessage(nbId, message);
     setState( s => ({ ...s, editingMessage: null, replyingTo: null }));
-    await persistMessages(nbId, newArr);
+    //await persistMessages(nbId, newArr);
   }, [state.selectedNotebook, state.editingMessage, state.replyingTo, state.messages, state.notebooks]);
 
   return html`
     <${AppContext.Provider} value=${{
       state, setState, createNotebook,
-      getNotebook, getMessages,
-      sendMessage, deleteMessage, persistMessages,
+      getNotebook, deleteNotebook,
+      getMessages, getMessage,
+      sendMessage, persistMessages,
+      saveMessage, deleteMessage, copyMessage,
       addReaction, confirmReaction, removeReaction,
     }}>
       <div class="App ${state.selectedNotebook ? 'show-chat' : ''}">
         <${ChatList} />
-        <${ChatScreen} inputRef=${inputRef} />
+        <${ChatScreen} messageInputRef=${messageInputRef} />
         ${state.createModal && html`<${CreateModal} />`}
         ${state.crossReplyModal && html`<${CrossReplyModal} />`}
         ${state.showSettings && html`<${SettingsModal} />`}
@@ -1686,8 +1734,8 @@ function App() {
 }
 
 function ChatList() {
-  const {state,setState} = useContext(AppContext);
-  const sortNotebook = (notebook) => Math.max(notebook.created, ...(state.messages[notebook.id] || []).map(message => message.timestamp));
+  const {state, setState, getMessages} = useContext(AppContext);
+  const sortNotebook = (notebook) => Math.max(notebook.created, ...Object.values(getMessages(notebook.id) || []).map(message => message.created/*timestamp*/));
   return html`
     <div class="ChatList">
       <div class="ChatList-header">
@@ -1715,11 +1763,11 @@ function ChatList() {
   `;
 }
 
-function ChatScreen({inputRef}) {
-  const { state, setState, sendMessage, getNotebook } = useContext(AppContext);
+function ChatScreen({ messageInputRef }) {
+  const { state, setState, sendMessage, getMessage, getNotebook } = useContext(AppContext);
   const notebook = getNotebook(state.selectedNotebook);
   let messages = state.messages[notebook?.id] || [];
-  messages = /* [...messages] */ Object.values(messages).sort((a,b) => (a.timestamp - b.timestamp));
+  messages = /* [...messages] */ Object.values(messages).sort((a,b) => (a.created/*timestamp*/ - b.created/*timestamp*/));
 
   // Scroll on request
   useEffect(() => {
@@ -1761,11 +1809,12 @@ function ChatScreen({inputRef}) {
         ${state.replyingTo && html`
           <div class="ReplyPreview">
             <span>Replying to: ${
-              (state.messages[state.replyingTo.notebookId] || []).find(x => x.id===state.replyingTo.id)?.text || ''
+              // (state.messages[state.replyingTo.notebookId] || []).find(x => x.id===state.replyingTo.id)?.text || ''
+              getMessage(state.replyingTo.notebookId, state.replyingTo.id)?.text || ''
             }</span>
             <button onClick=${() => setState(s => ({ ...s, replyingTo: null }))}>×</button>
           </div>`}
-        <textarea ref=${inputRef} class="EditArea"
+        <textarea ref=${messageInputRef} class="EditArea"
           onKeyPress=${e => e.key==='Enter' && !e.shiftKey && sendMessage()}/>
         <button onClick=${sendMessage}>${state.editingMessage!=null?'Save':'Send'}</button>
       </div>
@@ -1773,9 +1822,9 @@ function ChatScreen({inputRef}) {
   `;
 }
 
-function Message({message}) {
+function Message({ message }) {
   const {
-    state, setState,
+    state, setState, getMessage,
     addReaction, confirmReaction, removeReaction
   } = useContext(AppContext);
   return html`
@@ -1791,12 +1840,14 @@ function Message({message}) {
       }}>
       ${message.replyTo && html`
         <div class="ReplyIndicator"
-              onClick=${()=>setState(s=>({
-                ...state,
+              onClick=${() => setState(s => ({ ...state,
                 selectedNotebook: message.replyTo.notebookId,
                 scrollToMessage: message.replyTo.id,
               }))}>
-          Reply to "${(state.messages[message.replyTo.notebookId] || []).find(x => x.id===message.replyTo.id)?.text || ''}"
+          Reply to "${
+            // (state.messages[message.replyTo.notebookId] || []).find(x => x.id===message.replyTo.id)?.text || ''
+            getMessage(message.replyTo.notebookId, message.replyTo.id)?.text || ''
+          }"
         </div>`}
       <div dangerouslySetInnerHTML=${{ __html: makeParagraph(linkify(escapeHtml(message.text))) }} />
       ${(() => {
@@ -1807,8 +1858,8 @@ function Message({message}) {
         }
       })()}
       <div class="reactions">
-        ${message.reactions.map(r => html`
-          <button onClick=${() => removeReaction(message.id, r)}>${r}</button>
+        ${Object.keys(message.reactions).map(reaction => html`
+          <button onClick=${() => removeReaction(message.id, reaction)}>${reaction}</button>
         `)}
         ${state.reactionInputFor===message.id
           ? html`<input class="ReactionInput" maxlength="2" autofocus
@@ -1816,7 +1867,7 @@ function Message({message}) {
           : html`<button class="AddReactionBtn" onClick=${()=>addReaction(message.id)}>➕</button>`
         }
       </div>
-      <div class="Timestamp">${new Date(message.timestamp).toLocaleString()}${message.edited ? ' (edited)' : ''}</div>
+      <div class="Timestamp">${new Date(message.created/*timestamp*/).toLocaleString()}${message.edited ? ' (edited)' : ''}</div>
     </div>
   `
 }
@@ -1853,7 +1904,7 @@ function CrossReplyModal() {
 }
 
 function ContextMenu() {
-  const {state, setState, deleteMessage, persistMessages} = useContext(AppContext);
+  const {state, setState, copyMessage, deleteMessage, persistMessages} = useContext(AppContext);
   const idx = state.contextMenu.messageId;
   const nbId = state.selectedNotebook;
   const arr = state.messages[nbId] || [];
@@ -1865,10 +1916,10 @@ function ContextMenu() {
         setState(s => ({ ...s, replyingTo: { notebookId: nbId, id: msg.id }, ...closedContextMenu(s) }));
         return;
       case 'cross-reply':
-        setState(s => ({ ...s, ...closedContextMenu(s), crossReplyModal: true, crossReplySource: { notebook: nbId, id: msg.id }}));
+        setState(s => ({ ...s, ...closedContextMenu(s), crossReplyModal: true, crossReplySource: { notebook: nbId, id: msg.id } }));
         return;
       case 'copy':
-        navigator.clipboard.writeText(msg.text);
+        copyMessage(msg);
         setState(s => ({ ...s, ...closedContextMenu(s) }));
         return;
       case 'edit':
@@ -1888,7 +1939,7 @@ function ContextMenu() {
   return html`
     <div class="ContextMenu" style=${`left: ${state.contextMenu.x}px; top: ${state.contextMenu.y}px;`}>
       <div class="ContextMenuItem" onClick=${() => handle('reply')}>🔁 Reply</div>
-      <div class="ContextMenuItem" onClick=${() => handle('cross-reply')}>🔂 Reply in Another Notebook</div>
+      <!--<div class="ContextMenuItem" onClick=${() => handle('cross-reply')}>🔂 Reply in Another Notebook</div>-->
       <div class="ContextMenuItem" onClick=${() => handle('copy')}>📜 Copy</div>
       <div class="ContextMenuItem" onClick=${() => handle('edit')}>📝 Edit</div>
       <div class="ContextMenuItem" onClick=${() => handle('datetime')}>⏰ Set Date/Time</div>
@@ -1898,17 +1949,21 @@ function ContextMenu() {
 }
 
 function DateTimeModal() {
-  const {state, setState, persistMessages} = useContext(AppContext);
-  const idx=state.dateTimeModal, nbId=state.selectedNotebook;
-  const arr=state.messages[nbId]||[], msg=arr[idx];
-  const [dt,setDt] = useState('');
-  useEffect(() => (msg && setDt(new Date(msg.timestamp).toISOString().slice(0,16))), [msg]);
-  const save=()=>{
+  const {state, setState, persistMessages, saveMessage} = useContext(AppContext);
+  const idx = state.dateTimeModal;
+  const nbId = state.selectedNotebook;
+  const arr = state.messages[nbId]||[];
+  const msg = arr[idx];
+  const [dt, setDt] = useState('');
+  useEffect(() => (msg && setDt(new Date(msg.created/*timestamp*/).toISOString().slice(0, 16))), [msg]);
+  const save = () => {
     const timestamp = new Date(dt).getTime();
     if (!isNaN(timestamp)) {
-      const newArr = arr.map((m,i) => i===idx ? { ...m, timestamp } : m);
-      persistMessages(nbId, newArr);
-      setState(s => ({ ...s, messages: { ...s.messages, [nbId]: newArr }, dateTimeModal: null }));
+      // const newArr = arr.map((m,i) => i===idx ? { ...m, timestamp } : m);
+      // persistMessages(nbId, newArr);
+      // setState(s => ({ ...s, messages: { ...s.messages, [nbId]: newArr }, dateTimeModal: null }));
+      saveMessage(nbId, { ...msg, created: timestamp });
+      setState(s => ({ ...s, dateTimeModal: null }));
     }
   };
   return html`
@@ -1922,21 +1977,23 @@ function DateTimeModal() {
 }
 
 function SettingsModal() {
-  const {state, setState, getNotebook} = useContext(AppContext);
+  const {state, setState, getNotebook, deleteNotebook} = useContext(AppContext);
   const notebook = getNotebook(state.selectedNotebook);
   const [form, setForm] = useState({ ...notebook });
   const save = () => setState(s => ({ ...s, notebooks: s.notebooks.map(n => (n.id===notebook.id ? form : n)), showSettings: false }));
   const del = () => {
     if (confirm('Delete?')) {
-      if (notebook.sourceType==='local') {
-        localforage.removeItem(`notebook-${notebook.id}`);
-      }
-      setState(s => ({ ...s,
-        notebooks: s.notebooks.filter(n => n.id!==notebook.id),
-        messages: { ...s.messages, [notebook.id]: undefined },
-        encrypted: { ...s.encrypted, [notebook.id]: undefined },
-        selectedNotebook: null, showSettings: false,
-      }));
+      // if (notebook.sourceType==='local') {
+      //   localforage.removeItem(`notebook-${notebook.id}`);
+      deleteNotebook(notebook.id);
+      setState(s => ({ ...s, selectedNotebook: null, showSettings: false }));
+      // }
+      // setState(s => ({ ...s,
+      //   notebooks: s.notebooks.filter(n => n.id!==notebook.id),
+      //   messages: { ...s.messages, [notebook.id]: undefined },
+      //   encrypted: { ...s.encrypted, [notebook.id]: undefined },
+      //   selectedNotebook: null, showSettings: false,
+      // }));
     }
   };
   return html`
@@ -1946,9 +2003,11 @@ function SettingsModal() {
       <label>Emoji: <input value=${form.emoji} maxLength="2" onChange=${e => setForm(f => ({ ...f, emoji: e.target.value }))}/></label><br/>
       <label>Color: <input type="color" value=${form.color} onChange=${e => setForm(f => ({ ...f, color: e.target.value }))}/></label><br/>
       <label>Description: <input value=${form.description} onChange=${e => setForm(f => ({ ...f, description: e.target.value }))}/></label><br/>
-      <!--<label>Parse Mode: <select value=${form.parseMode} onChange=${e => setForm(f => ({ ...f, parseMode: e.target.value }))}>
+      <!--
+      <label>Parse Mode: <select value=${form.parseMode} onChange=${e => setForm(f => ({ ...f, parseMode: e.target.value }))}>
         <option value="plaintext">Plaintext</option>
-      </select></label><br/><br/>-->
+      </select></label><br/><br/>
+      -->
       <button onClick=${save}>Save</button>
       <button onClick=${del} style="color:red">Delete</button>
       <button onClick=${() => setState(s => ({ ...s, showSettings: false }))}>Close</button>
@@ -1974,7 +2033,7 @@ function SearchModal() {
             <div class="NotebookEmoji" style=${{ background: result.notebook.color }}>${result.notebook.emoji}</div>
             <strong>${result.notebook.name}</strong>
           </div>`}
-          <div>${result.text}</div><em>${new Date(result.timestamp).toLocaleString()}</em>
+          <div>${result.text}</div><em>${new Date(result.created/*timestamp*/).toLocaleString()}</em>
         </div>
       `)}
       <button onClick=${() => setState(s => ({ ...s, searchModal: { ...s.searchModal, visible: false }}))}>Close</button>
@@ -1983,30 +2042,33 @@ function SearchModal() {
 }
 
 function AppSettingsModal() {
-  const {state,setState} = useContext(AppContext);
-  const exportData = () => JSON.stringify({ notebooks: state.notebooks, encrypted: /* Object.fromEntries(Object.entries( */ state.encrypted /* ).map(([key, values]) => ([key, Object.values(values)]))) */ }, null, 2);
-  const [txt,setTxt] = useState('');
-  const doImport = () => {
-    try {
-      const obj = JSON.parse(txt);
-      if (obj.notebooks && obj.encrypted) {
-        localforage.setItem('notebooks', obj.notebooks);
-        Object.entries(obj.encrypted).forEach(([id,arr]) => localforage.setItem(`notebook-${id}`, arr));
-        window.location.reload();
-      } else {
-        alert('Invalid format');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Invalid JSON');
-    }
+  const {state, setState} = useContext(AppContext);
+  const [importTxt, setImportTxt] = useState('');
+  const exportData = () => JSON.stringify({ notebooks: state.notebooks, /* encrypted */ messages: Object.fromEntries(Object.entries(state.encrypted).map(([key, values]) => ([key, Object.values(values)]))) }, null, 2);
+  const doImport = () => { // TODO
+    return;
+    // try {
+    //   const obj = JSON.parse(importTxt);
+    //   if (obj.notebooks && obj.encrypted) {
+    //     localforage.setItem('notebooks', obj.notebooks);
+    //     Object.entries(obj.messages /* encrypted */).forEach(([id, arr]) => localforage.setItem(`notebook-${id}`, arr));
+    //     window.location.reload();
+    //   } else {
+    //     alert('Invalid format');
+    //   }
+    // } catch (err) {
+    //   console.error(err);
+    //   alert('Invalid JSON');
+    // }
   };
   return html`
     <div class="AppSettingsModal">
       <h3>App Settings</h3>
       <h4>Export Data</h4><textarea readonly rows="8">${exportData()}</textarea>
-      <h4>Import Data</h4><textarea rows="6" placeholder="Paste JSON" onInput=${e => setTxt(e.target.value)}/>
+      <!--
+      <h4>Import Data</h4><textarea rows="6" placeholder="Paste JSON" onInput=${e => setImportTxt(e.target.value)} />
       <button onClick=${doImport}>Import</button>
+      -->
       <button onClick=${() => setState(s => ({ ...s, showAppSettings:false }))}>Close</button>
     </div>
   `;
