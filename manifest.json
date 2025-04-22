@@ -1,0 +1,10 @@
+{
+  "name": " WhichNot",
+  "short_name": "WhichNot",
+  "scope": "https://whichnot.octt.eu.org/",
+  "start_url": "https://whichnot.octt.eu.org/",
+  "display": "standalone",
+  "icons": [
+    { "src": "./icon.png", "type": "image/png", "sizes": "1024x1024" }
+  ]
+}
