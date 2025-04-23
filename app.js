@@ -6,19 +6,31 @@ const AppContext = createContext();
 localforage.config({ name: "WhichNot" });
 navigator.storage.persist();
 
-// marked.use({ renderer: {
-//   image({ href, title, text }) { // allow embedding any media with ![]()
-//     title = (title ? ` title="${escapeHtml(title)}"` : '');
-//     return `<object data="${href}" alt="${text}" title="${title}">
-//       <embed src="${href}" alt="${text}" title="${title}" />
-//       ${text}
-//     </object>`;
-//   }
-// } });
+// Custom Markdown rendering
+marked.use({ renderer: {
+  // Open all [external (TODO: exclude internal ones once implemented)] links in a new tab
+  link({ href, title, tokens }) {
+    const text = this.parser.parseInline(tokens);
+    let out = `<a target="_blank" href="${escapeHtml(href)}"`;
+    if (title) {
+      out += ` title="${escapeHtml(title)}"`;
+    }
+    out += `>${text}</a>`;
+    return out;
+  },
+  // image({ href, title, text }) { // allow embedding any media with ![]()
+  //   title = (title ? ` title="${escapeHtml(title)}"` : '');
+  //   return `<object data="${href}" alt="${text}" title="${title}">
+  //     <embed src="${href}" alt="${text}" title="${title}" />
+  //     ${text}
+  //   </object>`;
+  // }
+} });
 
 const STRINGS = {
   "Notebook": { it: "Quaderno" },
   "Copy": { it: "Copia" },
+  "Copy to Clipboard": { it: "Copia negli Appunti" },
   "Reply": { it: "Rispondi" },
   "Reply in Another Notebook": { it: "Rispondi in un Altro Quaderno" },
   "Reply to": { it: "Risposta a" },
@@ -60,6 +72,23 @@ const NOTEBOOKS = {
         text: "**WhichNot is finally released and REAL!!!** BILLIONS MUST ENJOY!!!",
         created: "2025-04-20T23:00",
         reactions: { "💝": true },
+      },
+      {
+        text: "Official first release devlog post: https://octospacc.altervista.org/2025/04/21/whichnot-rilasciato-in-tarda-annunciata-app-di-note-come-messaggi/",
+        created: "2025-04-21T21:00"
+      },
+      {
+        text: "For the greatest benefit of everyone's retinas, **OBSCURE MODE IS HERE!** Yes indeed, it's not just dark, but as a matter of fact obscure: it uses the cutting-edge [CSS `light-dark()` function](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/light-dark) to ensure a pleasant experience for the users (including setting the colors automatically based on the browser's settings) and limited pain for the developer (me). 🌚\n\n![](https://windog.octt.eu.org/api/v1/FileProxy/?url=telegram:AgACAgEAAxkBAAIWzWgIq6JoJl57iYVamdd2TmtUYpVMAAJSrzEbpcRBRN2mi5RO7WqiAQADAgADeQADNgQ&type=image/jpeg&timestamp=1745395090&token=hhwBcamZvd6KoSpTZbQi1j-N-7FbQprjv1UFHvozbcg=)",
+        created: "2025-04-22T20:00",
+      },
+      {
+        text: "From the suffering I just felt now that I actually tried to use the app on mobile for a bit, **an hotfix is born**: while behavior on desktop remains unchanged, **pressing Enter in the message editing area on mobile now correctly makes a newline, instead of sending**, as one would expect from a chat UI. ↩️",
+        created: "2025-04-23T10:30",
+        reactions: { "🔥": true },
+      },
+      {
+        text: "JUST IN: **the app is now officially released as blessed Free (Libre) Software under the terms of the AGPL-3.0 license**!!! Proprietarytards as well as OSS-LARPers could literally never. Official Git source repos are as follows: \n* https://gitlab.com/octospacc/WhichNot \n* https://github.com/octospacc/WhichNot",
+        created: "2025-04-24T01:00",
       },
     ],
   },
@@ -158,6 +187,7 @@ function App() {
     searchModal: { visible: false, global: false, query: '' },
     editingMessage: null, replyingTo: null, reactionInputFor: null,
   });
+  const isFirstHashPush = useRef(true);
   const messageInputRef = useRef();
   const [loading, setLoading] = useState(true);
 
@@ -181,6 +211,35 @@ function App() {
       setLoading(false);
     })();
   }, []);
+
+  const navigateHash = useCallback(() => {
+    const params = new URLSearchParams(location.hash.slice(2));
+    const [notebookId, messageId] = (params.get('notebook') || '#').split('#');
+    setState(s => ({ ...s,
+      selectedNotebookId: notebookId,
+      scrollToMessageId: (notebookId && parseInt(messageId) || null),
+      showNotebookSettings: (messageId === 'settings'),
+    }));
+  }, []);
+
+  const pushHistory = useCallback(hash => {
+    if (isFirstHashPush.current) {
+      isFirstHashPush.current = false;
+    } else {
+      location.hash = hash;
+    }
+  }, []);
+
+  // Listen for URL navigation
+  useEffect(() => {
+    navigateHash(); // Initial sync
+    window.addEventListener('hashchange', navigateHash);
+    return () => window.removeEventListener('hashchange', navigateHash);
+  }, [navigateHash]);
+
+  // Set URL navigation hashes
+  useEffect(() => pushHistory(`#?${state.selectedNotebookId ? `notebook=${state.selectedNotebookId}` : ''}`), [state.selectedNotebookId, pushHistory]);
+  // useEffect(() => (state.selectedNotebookId && pushHistory(`#?notebook=${state.selectedNotebookId}${state.showNotebookSettings ? '#settings' : ''}`)), [state.showNotebookSettings]);
 
   // Persist notebooks meta
   useEffect(() => {
@@ -325,6 +384,7 @@ function App() {
     }
   }, [state.editingMessage, state.selectedNotebookId, state.messages]);
 
+  // Scroll to last sent messagge
   useEffect(() => (state.scrollToMessageId==null && Array.from(document.querySelectorAll('.Message[data-message-id]')).slice(-1)[0]?.scrollIntoView({ behavior: 'smooth', block: 'start' })), [state.selectedNotebookId]);
 
   const sendMessage = useCallback(async () => {
@@ -342,7 +402,7 @@ function App() {
         reactions: {},
       };
     }
-    message = { ...message, text, edited: (state.editingMessage!=null ? Date.now() : false), };
+    message = { ...message, text, edited: (state.editingMessage!=null ? (text !== message.text ? Date.now() : message.edited) : false), };
     messageInputRef.current.value = '';
     // update nextMessageId if new
     setState(s => ({ ...s, notebooks: s.notebooks.map(notebook => notebook.id===notebookId
@@ -446,7 +506,15 @@ function ChatScreen({messageInputRef}) {
             }"</span>
             <button onClick=${() => setState(s => ({ ...s, replyingTo: null }))}>×</button>
           </div>`}
-        <textarea ref=${messageInputRef} class="EditArea" onKeyDown=${ev => ev.key==='Enter' && !ev.shiftKey && sendMessage()}/>
+        <textarea ref=${messageInputRef} class="EditArea" onKeyDown=${ev => {
+          const hasFine = matchMedia('(pointer: fine)').matches;
+          const hasCoarse = matchMedia('(pointer: coarse)').matches;
+          const isMobile = hasCoarse && !hasFine;
+          if (!isMobile && ev.key==='Enter' && !ev.shiftKey) {
+            ev.preventDefault();
+            sendMessage();
+          }
+        }}/>
         <button onClick=${sendMessage}>${state.editingMessage!=null ? STRINGS.get('Save') : STRINGS.get('Send')}</button>
       </div>`}
     </div>
@@ -489,7 +557,7 @@ function Message({message, notebook}) {
           <button onClick=${() => removeReaction(message.id, reaction)} disabled=${notebook.readonly}>${reaction}</button>
         `)}
         ${!notebook.readonly && (state.reactionInputFor===message.id
-          ? html`<input class="ReactionInput" maxlength="2" autofocus onKeyPress=${e => e.key==='Enter' && (confirmReaction(message.id, e.target.value), e.target.value='')} />`
+          ? html`<input class="ReactionInput" maxlength="2" autofocus onKeyDown=${e => e.key==='Enter' && (confirmReaction(message.id, e.target.value), e.target.value='')} />`
           : html`<button class="AddReactionBtn" onClick=${() => addReaction(message.id)}>➕</button>`
         )}
       </div>
@@ -555,11 +623,12 @@ function ContextMenu() {
   };
   return html`
     <div class="ContextMenu" style=${`left: ${state.contextMenu.x}px; top: ${state.contextMenu.y}px;`}>
-      <div class="ContextMenuItem" onClick=${() => handle('copy')}>📜 ${STRINGS.get('Copy')}</div>
+      <div class="ContextMenuItem" onClick=${() => handle('copy')}>📜 ${STRINGS.get('Copy to Clipboard')}</div>
       ${!notebook.readonly && html`
         <div class="ContextMenuItem" onClick=${() => handle('reply')}>🔁 ${STRINGS.get('Reply')}</div>
         <div class="ContextMenuItem" onClick=${() => handle('cross-reply')}>🔂 ${STRINGS.get('Reply in Another Notebook')}</div>
         <div class="ContextMenuItem" onClick=${() => handle('edit')}>📝 ${STRINGS.get('Edit')}</div>
+        <!--<div class="ContextMenuItem" onClick=${() => handle('move')}>📦 ${STRINGS.get('Move')}</div>-->
         <div class="ContextMenuItem" onClick=${() => handle('datetime')}>⏰ ${STRINGS.get('Set Date/Time')}</div>
         <div class="ContextMenuItem" onClick=${() => handle('delete')}>❌ ${STRINGS.get('Delete')}</div>
       `}
@@ -666,7 +735,7 @@ function AppSettingsModal() {
           encrypteds: Object.fromEntries(Object.entries(obj.messages).map(([notebookId, messages]) => ([notebookId, Object.fromEntries(messages.map(message => [message.id, message]))]))),
         }));
         // window.location.reload();
-        setState(s => ({ ...s, showAppSettings:false }));
+        setState(s => ({ ...s, showAppSettings: false }));
       } else {
         alert(STRINGS.get('Invalid data format'));
       }
@@ -678,12 +747,13 @@ function AppSettingsModal() {
   return html`
     <div class="AppSettingsModal">
       <h3>${STRINGS.get('App Settings')}</h3>
-      <h4>${STRINGS.get('Export Data')}</h4><textarea readonly rows="8">${exportData()}</textarea>
+      <h4>${STRINGS.get('Export Data')}</h4>
+      <textarea readonly rows="8">${exportData()}</textarea>
       <h4>${STRINGS.get('Import Data')}</h4>
-      <textarea rows="6" placeholder=${STRINGS.get('Paste JSON')} onInput=${ev => setImportTxt(ev.target.value)} />
+      <textarea rows="8" placeholder=${STRINGS.get('Paste JSON')} onInput=${ev => setImportTxt(ev.target.value)} />
       <button onClick=${doImport}>${STRINGS.get('Import Data')}</button>
       <br /><br />
-      <button onClick=${() => setState(s => ({ ...s, showAppSettings:false }))}>${STRINGS.get('Close')}</button>
+      <button onClick=${() => setState(s => ({ ...s, showAppSettings: false }))}>${STRINGS.get('Close')}</button>
     </div>
   `;
 }
