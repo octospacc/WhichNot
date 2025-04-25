@@ -113,7 +113,7 @@ const uuidv7 = () => {
 }
 const generateUUID = () => uuidv7(); // crypto.randomUUID();
 const genAESKey = async () => crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
-// const genEd25519 = async () => crypto.subtle.generateKey({ name: 'Ed25519', namedCurve: 'Ed25519' }, true, ['sign', 'verify']);
+const genEcdsaP256 = async () => crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
 const exportJWK = async (key) => btoa(JSON.stringify(await crypto.subtle.exportKey('jwk', key)));
 const importJWK = async (b64, alg, usages) => crypto.subtle.importKey('jwk', JSON.parse(atob(b64)), alg, true, usages);
 const randBytes = (n=12) => {
@@ -175,6 +175,14 @@ const randomEmoji = () => EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
 const randomColor = () => ('#' + Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, '0'));
 
 const closedContextMenu = s => ({ contextMenu: { ...s.contextMenu, visible: false } });
+const makeTextareaHeight = text => {
+  let lines = text.split('\n').length;
+  if (lines > 10) {
+    lines = 10;
+  }
+  return `${lines + 2}em`;
+};
+const textareaInputHandler = el => (el.style.minHeight = makeTextareaHeight(el.value));
 
 function App() {
   const [state, setState] = useState({
@@ -186,6 +194,7 @@ function App() {
     contextMenu:{ visible: false, messageId: null, x: 0, y: 0 },
     searchModal: { visible: false, global: false, query: '' },
     editingMessage: null, replyingTo: null, reactionInputFor: null,
+    debugMode: false,
   });
   const isFirstHashPush = useRef(true);
   const messageInputRef = useRef();
@@ -283,13 +292,14 @@ function App() {
     let id = /* (type === 'local' ? */ generateUUID(); /* : prompt('Remote ID:')); */
     // if (!id) return;
     const now = Date.now();
-    // const ed = await genEd25519();
+    // const ecdsa = await genEcdsaP256();
     const notebook = {
       id, name: `${STRINGS.get('Notebook')} ${now}`, description: '',
       emoji: randomEmoji(), color: randomColor(),
       parseMode: "markdown", // sourceType: type,
       nextMessageId: 1, created: now,
-      aesKeyB64: await exportJWK(await genAESKey()), // edPrivB64: await exportJWK(ed.privateKey), edPubB64: await exportJWK(ed.publicKey),
+      aesKeyB64: await exportJWK(await genAESKey()),
+      // ecdsaPrivB64: await exportJWK(ecdsa.privateKey), ecdsaPubB64: await exportJWK(ecdsa.publicKey),
     };
     setState(s => ({ ...s,
       notebooks: [ ...s.notebooks, notebook ],
@@ -380,6 +390,7 @@ function App() {
       const message = state.messages[state.selectedNotebookId]?.[state.editingMessage];
       if (message) {
         messageInputRef.current.value = message.text;
+        textareaInputHandler(messageInputRef.current);
       }
     }
   }, [state.editingMessage, state.selectedNotebookId, state.messages]);
@@ -404,6 +415,7 @@ function App() {
     }
     message = { ...message, text, edited: (state.editingMessage!=null ? (text !== message.text ? Date.now() : message.edited) : false), };
     messageInputRef.current.value = '';
+    messageInputRef.current.style.minHeight = null;
     // update nextMessageId if new
     setState(s => ({ ...s, notebooks: s.notebooks.map(notebook => notebook.id===notebookId
       ? { ...notebook, nextMessageId: (state.editingMessage==null ? notebook.nextMessageId+1 : notebook.nextMessageId) }
@@ -501,7 +513,7 @@ function ChatScreen({messageInputRef}) {
       ${!notebook.readonly && html`<div class="SendBar">
         ${state.replyingTo && html`
           <div class="ReplyPreview">
-            <span>${STRINGS.get('Reply to')}: "${
+            <span class="ReplyPreviewText">${STRINGS.get('Reply to')}: "${
               getMessage(state.replyingTo.notebookId, state.replyingTo.messageId)?.text || ''
             }"</span>
             <button onClick=${() => setState(s => ({ ...s, replyingTo: null }))}>×</button>
@@ -514,7 +526,7 @@ function ChatScreen({messageInputRef}) {
             ev.preventDefault();
             sendMessage();
           }
-        }}/>
+        }} onInput=${ev => textareaInputHandler(ev.target)} />
         <button onClick=${sendMessage}>${state.editingMessage!=null ? STRINGS.get('Save') : STRINGS.get('Send')}</button>
       </div>`}
     </div>
@@ -557,7 +569,12 @@ function Message({message, notebook}) {
           <button onClick=${() => removeReaction(message.id, reaction)} disabled=${notebook.readonly}>${reaction}</button>
         `)}
         ${!notebook.readonly && (state.reactionInputFor===message.id
-          ? html`<input class="ReactionInput" maxlength="2" autofocus onKeyDown=${e => e.key==='Enter' && (confirmReaction(message.id, e.target.value), e.target.value='')} />`
+          ? html`<input type="text" class="ReactionInput" maxlength="2" autofocus enterkeyhint="done" onKeyDown=${ev => {
+              if (ev.key==='Enter') {
+                confirmReaction(message.id, ev.target.value);
+                ev.target.value = '';
+              }
+            }} />`
           : html`<button class="AddReactionBtn" onClick=${() => addReaction(message.id)}>➕</button>`
         )}
       </div>
@@ -682,7 +699,7 @@ function NotebookSettingsModal() {
       <p><label>${STRINGS.get('Name')}: <input value=${form.name} onChange=${ev => setForm(f => ({ ...f, name: ev.target.value }))} disabled=${notebook.readonly} /></label></p>
       <p><label>Emoji: <input value=${form.emoji} maxLength="2" onChange=${ev => setForm(f => ({ ...f, emoji: ev.target.value }))} disabled=${notebook.readonly} /></label></p>
       <p><label>${STRINGS.get('Color')}: <input type="color" value=${form.color || 'transparent'} onChange=${ev => setForm(f => ({ ...f, color: ev.target.value }))} disabled=${notebook.readonly} /></label></p>
-      <p><label>${STRINGS.get('Description')}: <textarea onChange=${ev => setForm(f => ({ ...f, description: ev.target.value }))} disabled=${notebook.readonly}>${form.description}</textarea></label></p>
+      <p><label>${STRINGS.get('Description')}: <textarea style=${{ minHeight: makeTextareaHeight(form.description) }} onChange=${ev => setForm(f => ({ ...f, description: ev.target.value }))} onInput=${ev => textareaInputHandler(ev.target)} disabled=${notebook.readonly}>${form.description}</textarea></label></p>
       <p><label>Parse Mode: <select value=${form.parseMode || UNSPECIFIEDS.parseMode} onChange=${ev => setForm(f => ({ ...f, parseMode: ev.target.value }))} disabled=${notebook.readonly}>
         <option value="plaintext">Plaintext</option>
         <option value="markdown">Markdown</option>
@@ -752,6 +769,8 @@ function AppSettingsModal() {
       <h4>${STRINGS.get('Import Data')}</h4>
       <textarea rows="8" placeholder=${STRINGS.get('Paste JSON')} onInput=${ev => setImportTxt(ev.target.value)} />
       <button onClick=${doImport}>${STRINGS.get('Import Data')}</button>
+      <!--<h4>Other</h4>
+      <label><input type="checkbox" checked=${state.debugMode} onChange=${ev => setState(s => ({ ...s, debugMode: ev.target.checked }))} /> Experimental/Debug features ${state.debugMode && html`(resets on restart)`}</label>-->
       <br /><br />
       <button onClick=${() => setState(s => ({ ...s, showAppSettings: false }))}>${STRINGS.get('Close')}</button>
     </div>
