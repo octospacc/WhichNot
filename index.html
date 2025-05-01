@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      navigator.serviceWorker.register('/service-worker.js', { scope: "/" });
+    }
+  </script>
   <link rel="manifest" href="./manifest.json" />
   <link rel="shortcut icon" href="./icon.png" type="image/png" sizes="1024x1024" />
   <title>WhichNot</title>
@@ -16,10 +21,16 @@
       --focus-bg: light-dark(#f5f5f5, #2b2a33);
     }
     * { box-sizing: border-box; }
-    body, html {
+    html, body {
       margin: 0; height: 100%;
       font-family: Arial, sans-serif;
       color-scheme: light dark;
+    }
+    html[data-theme="light"], html[data-theme="light"] body {
+      color-scheme: light;
+    }
+    html[data-theme="dark"], html[data-theme="dark"] body {
+      color-scheme: dark;
     }
     .App { display: flex; height: 100vh; }
     .ChatList {
@@ -72,6 +83,7 @@
     }
     .ContextMenuItem { padding: .5rem 1rem; cursor: pointer; }
     .ContextMenuItem:hover { background: var(--focus-bg); }
+    button.ContextMenuItem { width: 100%; display: block; background: inherit; border: none; text-align: left; font-size: inherit; }
 
     .DateTimeModal, .SearchModal, .AppSettingsModal, .CreateModal, .NotebookSettingsModal, .CrossReplyModal {
       position: fixed; margin: auto; top: 0; bottom: 0; left: 0; right: 0; /* top: 50%; left: 50%; transform: translate(-50%,-50%); */
@@ -85,6 +97,9 @@
     .AppSettingsModal input[type="color"], .NotebookSettingsModal input[type="color"] { padding: revert; }
     .SearchResult { padding: .5rem 0; border-bottom: 1px solid #eee; cursor: pointer; }
     .SearchResult:hover { background: var(--focus-bg); }
+    .ModalHeader { display: flex; }
+    .ModalHeader h3 { flex: 1; }
+    .ModalHeader button { height: max-content; }
 
     .ReplyIndicator {
       border-left: 3px solid var(--wapp-green); padding-left: .5rem; margin-bottom: .5rem;
@@ -102,7 +117,8 @@
   <script src="./marked.min.js"></script>
 </head>
 <body>
-<script src="app.js"></script>
+<noscript><p>This application requires modern JavaScript.</p></noscript>
+<script src="./app.js"></script>
 <script type="module">
 const libs = [
   {
