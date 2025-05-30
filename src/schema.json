@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://whichnot.octt.eu.org/schema.json",
+  "title": "WhichNot",
+  "type": "object",
+  "oneOf": [
+    {
+      "properties": {
+        "type": { "const": "notebook" },
+        "data": { "$ref": "#/definitions/notebook" }
+      },
+      "required": ["type", "data"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "type": { "const": "message" },
+        "data": { "$ref": "#/definitions/message" }
+      },
+      "required": ["type", "data"],
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "notebook": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[0-9a-fA-F\\-]{36}$" },
+        "name": { "type": "string", "maxLength": 128 },
+        "emoji": { "type": "string", "pattern": "^..?$" },
+        "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "description": { "type": "string", "maxLength": 1024 },
+        "parseMode": { "type": "string", "enum": ["plaintext", "markdown"] },
+        "created": { "type": "integer", "minimum": 0 },
+        "edited": { "type": "integer", "minimum": 0 },
+        "nextMessageId": { "type": "integer", "minimum": 1 },
+        "hmacKeyB64": { "type": "string", "contentEncoding": "base64", "maxLength": 256 }
+      },
+      "required": ["id", "created", "hmacKeyB64"],
+      "additionalProperties": false
+    },
+    "message": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "created": { "type": "integer", "minimum": 0 },
+        "edited": { "type": "integer", "minimum": 0 },
+        "ciphertext": { "type": "string", "contentEncoding": "base64", "maxLength": 16384 },
+        "iv": { "type": "string", "contentEncoding": "base64", "maxLength": 16 },
+        "salt": { "type": "string", "contentEncoding": "base64", "maxLength": 16 },
+        "replyTo": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "properties": {
+                "notebookId": { "type": "string", "pattern": "^[0-9a-fA-F\\-]{36}$" },
+                "messageId": { "type": "integer", "minimum": 1 }
+              },
+              "required": ["notebookId", "messageId"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "reactions": {
+          "type": "object",
+          "patternProperties": {
+          	"^..?$": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["id", "created", "ciphertext", "iv", "salt"],
+      "additionalProperties": false
+    }
+  }
+}

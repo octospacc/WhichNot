@@ -1,3 +1,4 @@
+// @ts-nocheck
 const cacheName = 'WhichNot/v1';
 const cachables = {
 	"/": "networkFirst",
@@ -47,10 +48,7 @@ self.addEventListener('install', (event) => {
 	self.skipWaiting();
 	event.waitUntil(
 		caches.open(cacheName).then((cache) => cache.addAll([
-			'/', '/index.html', '/manifest.json',
-			'/app.js', '/icon.png',
-			'/localforage.min.js', '/marked.min.js',
-			'/preact/preact.js', '/preact/hooks.js', '/preact/htm.js',
+			'/', //files//
 		])),
 	);
 });

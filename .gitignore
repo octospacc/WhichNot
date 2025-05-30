@@ -1,3 +1,6 @@
 localforage.min.js
 marked.min.js
 preact/
+/src/app/index.html
+/src/app/schema.json.js
+/src/app/service-worker.js

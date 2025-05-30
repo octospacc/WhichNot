@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      navigator.serviceWorker.register('/service-worker.js', { scope: "/" });
+    }
+  </script>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="shortcut icon" href="./icon.png" type="image/png" sizes="1024x1024" />
+  <title>WhichNot</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<noscript><p>This application requires modern JavaScript.</p></noscript>
+<script type="module">
+// Define and load ESM libraries, and assign the needed modules to global scope
+// Libs can't be loaded from file://, so a remote CDN must be used in that case
+const libs = [
+  {
+    l: 'preact/preact.js',
+    g: 'https://esm.sh/preact',
+    h: mod => {
+      const { h, render, createContext } = mod;
+      Object.assign(window, { h, render, createContext });
+    },
+  },
+  {
+    l: 'preact/hooks.js',
+    g: 'https://esm.sh/preact/hooks',
+    h: mod => {
+      const { useState, useEffect, useCallback, useRef, useContext } = mod;
+      Object.assign(window, { useState, useEffect, useCallback, useRef, useContext });
+    },
+  },
+  {
+    l: 'preact/htm.js',
+    g: 'https://esm.sh/htm',
+    h: mod => (window.htm = mod.default),
+  },
+];
+await Promise.all(libs.map(lib => {
+  const url = (location.protocol === 'file:' ? lib.g : `./lib/${lib.l}`);
+  return import(url).then(lib.h);
+}));
+
+appMain();
+</script>
+</body>
+</html>
