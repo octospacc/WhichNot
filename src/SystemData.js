@@ -1,6 +1,4 @@
-function initSystemData() {
-
-const STRINGS = {
+export const STRINGS = {
   "Notebook": { it: "Quaderno" },
   "Copy": { it: "Copia" },
   "Copy to Clipboard": { it: "Copia negli Appunti" },
@@ -43,11 +41,11 @@ const STRINGS = {
 };
 STRINGS.get = (name, lang=navigator.language.split('-')[0]) => (STRINGS[name]?.[lang] || STRINGS[name]?.en || name);
 
-const UNSPECIFIEDS = {
+export const UNSPECIFIEDS = {
   parseMode: "plaintext",
 };
-  
-const NOTEBOOKS = {
+
+export const NOTEBOOKS = {
   "WhichNot": {
     emoji: "ℹ️",
     description: STRINGS.get('Info and Demo'),
@@ -126,7 +124,3 @@ It's also **just about time for Ａｅｓｔｈｅｔｉｃｓ** (also called "U
   },
 };
 Object.entries(NOTEBOOKS).forEach(([name, values]) => (NOTEBOOKS[name] = { id: name, name, ...values, messages: values.messages.map((message, id) => ({ id, ...message })) }));
-
-return {STRINGS, UNSPECIFIEDS, NOTEBOOKS};
-
-}

@@ -47,9 +47,11 @@ const strategies = {
 self.addEventListener('install', (event) => {
 	self.skipWaiting();
 	event.waitUntil(
-		caches.open(cacheName).then((cache) => cache.addAll([
-			'/', //files//
-		])),
+		// caches.open(cacheName).then((cache) => cache.addAll([
+		// 	// '/', //files//
+		// 	// '/', '/AppSettingsModal.js', '/Message.js', '/NotebookSettingsModal.js', '/SystemData.js', '/app.js', '/icon.png', '/index.html', '/manifest.json', '/schema.json.js', '/service-worker.js', '/style.css', '/lib/localforage.min.js', '/lib/marked.min.js', '/lib/preact/hooks.js', '/lib/preact/htm.js', '/lib/preact/preact.js', //files//
+		// ])),
+		caches.open(cacheName).then(cache => cache.addAll(self.__WB_MANIFEST.map(file => file.url))),
 	);
 });
 

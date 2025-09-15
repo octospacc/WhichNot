@@ -1,11 +1,17 @@
-window.appMain = () => {
+import localforage from "localforage";
+import { marked } from "marked";
+import { createContext } from "preact";
+import { useCallback, useContext, useEffect, useRef, useState } from "preact/hooks";
+import { NOTEBOOKS, STRINGS, UNSPECIFIEDS } from "./SystemData";
+import { Message } from "./Message";
+import { AppSettingsModal } from "./AppSettingsModal";
+import { NotebookSettingsModal } from "./NotebookSettingsModal";
 
-const html = htm.bind(h);
-const AppContext = createContext();
-const SchemaContext = createContext(null);
+export const AppContext = createContext(null);
+export const SchemaContext = createContext(null);
 
 localforage.config({ name: "WhichNot" });
-navigator.storage.persist();
+navigator.storage?.persist();
 
 // Custom Markdown rendering
 marked.use({ renderer: {
@@ -28,18 +34,16 @@ marked.use({ renderer: {
   // }
 } });
 
-const {STRINGS, UNSPECIFIEDS, NOTEBOOKS} = initSystemData();
-
 const uuidv7 = () => {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
-  const time = BigInt(Date.now());
-  bytes[0] = Number((time >> 40n) & 0xffn);
-  bytes[1] = Number((time >> 32n) & 0xffn);
-  bytes[2] = Number((time >> 24n) & 0xffn);
-  bytes[3] = Number((time >> 16n) & 0xffn);
-  bytes[4] = Number((time >> 8n) & 0xffn);
-  bytes[5] = Number(time & 0xffn);
+  const time = Date.now();
+  bytes[0] = (time / 0x10000000000) & 0xff;
+  bytes[1] = (time / 0x100000000) & 0xff;
+  bytes[2] = (time / 0x1000000) & 0xff;
+  bytes[3] = (time / 0x10000) & 0xff;
+  bytes[4] = (time / 0x100) & 0xff;
+  bytes[5] = time & 0xff;
   bytes[6] = (bytes[6] & 0x0f) | 0x70;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const chars = Array.from(bytes).map(byte => byte.toString(16).padStart(2, '0'));
@@ -88,14 +92,14 @@ const decryptMessage = async (encrypted, rawKey) => {
   return { ...encrypted, text: new TextDecoder().decode(dec) };
 };
 
-const escapeHtml = text => {
+export const escapeHtml = text => {
   const node = document.createElement('p');
   node.appendChild(document.createTextNode(text));
   return node.innerHTML;
 };
-const makeParagraph = text => `<p>${text.replaceAll('\n', '<br />')}</p>`
-const linkify = text => text.replace(/(\bhttps?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
-const getFirstLink = html => Object.assign(document.createElement('div'), { innerHTML: html }).querySelector('a[href]')?.getAttribute('href');
+export const makeParagraph = text => `<p>${text.replaceAll('\n', '<br />')}</p>`
+export const linkify = text => text.replace(/(\bhttps?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
+export const getFirstLink = html => Object.assign(document.createElement('div'), { innerHTML: html }).querySelector('a[href]')?.getAttribute('href');
 
 const EMOJIS = ['📒','📓','📔','📕','📖','📗','📘','📙','📚','✏️','📝'];
 const randomEmoji = () => EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
@@ -105,8 +109,8 @@ const deleteKeys = (obj, keys) => {
   return obj;
 };
 
+export const clickOnEnter = ev => (ev.key==='Enter' && ev.target.click());
 const closedContextMenu = s => ({ contextMenu: { ...s.contextMenu, visible: false } });
-const clickOnEnter = ev => (ev.key==='Enter' && ev.target.click());
 const focusElement = (target) => (typeof target==='string' ? document.querySelector(target) : target)?.focus();
 const scrollToMessage = messageId => {
   const message = Array.from(document.querySelectorAll(`.Message[data-message-id${messageId ? `="${messageId}"` : ''}]`)).slice(-1)[0];
@@ -115,21 +119,16 @@ const scrollToMessage = messageId => {
     messageId && message.focus({ preventScroll: true });
   }
 };
-const makeTextareaHeight = text => {
+export const makeTextareaHeight = text => {
   let lines = text.split('\n').length;
   if (lines > 10) {
     lines = 10;
   }
   return `${lines + 2}em`;
 };
-const textareaInputHandler = el => (el.style.minHeight = makeTextareaHeight(el.value));
+export const textareaInputHandler = el => (el.style.minHeight = makeTextareaHeight(el.value));
 
-const ctx = {
-  html, AppContext, SchemaContext, STRINGS, UNSPECIFIEDS,
-  makeTextareaHeight, textareaInputHandler, clickOnEnter, escapeHtml, getFirstLink, makeParagraph, linkify,
-};
-
-function App() {
+export function App() {
   const [state, setState] = useState({
     notebooks: [], encrypteds: {}, messages: {},
     prefs: { debugMode: false },
@@ -142,7 +141,7 @@ function App() {
     editingMessage: null, replyingTo: null, reactionInputFor: null,
   });
   const isFirstHashPush = useRef(true);
-  const messageInputRef = useRef();
+  const messageInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
 
   // Get UI strings by user-set language
@@ -170,7 +169,7 @@ function App() {
       console.error(err);
       alert(err);
     }
-  });
+  }, []);
 
   // Load data from storage
   useEffect(() => {
@@ -349,7 +348,7 @@ function App() {
     // }
   }, [state.notebooks]);
 
-  const setNotebook = useCallback(newNotebook => setState(s => ({ ...s, notebooks: s.notebooks.map(oldNotebook => (oldNotebook.id===newNotebook.id ? newNotebook : oldNotebook)) })));
+  const setNotebook = useCallback(newNotebook => setState(s => ({ ...s, notebooks: s.notebooks.map(oldNotebook => (oldNotebook.id===newNotebook.id ? newNotebook : oldNotebook)) })), []);
   const getNotebook = useCallback(notebookId => (state.notebooks.find(notebook => (notebook.id === notebookId)) || NOTEBOOKS[notebookId]), [state.notebooks]);
   const deleteNotebook = useCallback(async (notebookId) => {
     const messagesList = Object.keys(getMessages(notebookId));
@@ -365,8 +364,8 @@ function App() {
       localforage.removeItem(`messages/${notebookId}`),
       ...messagesList.map(messageId => localforage.removeItem(`messages/${notebookId}/${messageId}`)),
     ]);
-  });
-  const upsyncNotebook = useCallback(notebookId => callApi('PUT', `notebook/${notebookId}`, notebookId, deleteKeys(getNotebook(notebookId), ['aesKeyB64'])));
+  }, []);
+  const upsyncNotebook = useCallback(notebookId => callApi('PUT', `notebook/${notebookId}`, notebookId, deleteKeys(getNotebook(notebookId), ['aesKeyB64'])), []);
 
   const getMessages = useCallback((notebookId) => (state.messages[notebookId] || NOTEBOOKS[notebookId]?.messages || {}), [state.messages]);
   const getMessage = useCallback((notebookId, messageId) => getMessages(notebookId)[messageId], [state.messages]);
@@ -474,53 +473,49 @@ function App() {
     }
   }, [state.editingMessage, state.replyingTo, state.selectedNotebookId, loading, sendMessage]);
 
-  return html`
-    <${AppContext.Provider} value=${{
-      state, setState, callApi,
-      createNotebook, getNotebook, setNotebook, deleteNotebook, upsyncNotebook,
-      getMessages, getMessage, sendMessage, persistMessages,
-      saveMessage, deleteMessage, copyMessage,
-      addReaction, confirmReaction, removeReaction,
-    }}>
-      <div class="App ${state.selectedNotebookId ? 'show-chat' : ''}">
-        <${ChatList} />
-        <${ChatScreen} messageInputRef=${messageInputRef} />
-        ${state.createModal && html`<${CreateModal} />`}
-        ${state.crossReplyModal && html`<${CrossReplyModal} />`}
-        ${state.showNotebookSettings && html`<${NotebookSettingsModal} ctx=${ctx} />`}
-        ${state.showAppSettings && html`<${AppSettingsModal} ctx=${ctx} />`}
-        ${state.contextMenu.visible && html`<${ContextMenu} />`}
-        ${state.dateTimeModal!==null && html`<${DateTimeModal} />`}
-        ${state.searchModal.visible && html`<${SearchModal} />`}
-      </div>
-    <//>
-  `;
+  return <AppContext.Provider value={{
+    state, setState, callApi,
+    createNotebook, getNotebook, setNotebook, deleteNotebook, upsyncNotebook,
+    getMessages, getMessage, sendMessage, persistMessages,
+    saveMessage, deleteMessage, copyMessage,
+    addReaction, confirmReaction, removeReaction,
+  }}>
+    <div class={'App ' + (state.selectedNotebookId ? 'show-chat' : '')}>
+      <ChatList />
+      <ChatScreen messageInputRef={messageInputRef} />
+      {state.createModal && <CreateModal />}
+      {state.crossReplyModal && <CrossReplyModal />}
+      {state.showNotebookSettings && <NotebookSettingsModal />}
+      {state.showAppSettings && <AppSettingsModal />}
+      {state.contextMenu.visible && <ContextMenu />}
+      {state.dateTimeModal!==null && <DateTimeModal />}
+      {state.searchModal.visible && <SearchModal />}
+    </div>
+  </AppContext.Provider>;
 }
 
 function ChatList() {
   const {state, setState, getMessages} = useContext(AppContext);
   const sortNotebook = (notebook) => Math.max(notebook.created, ...Object.values(getMessages(notebook.id) || []).map(message => message.created));
-  return html`
-    <div class="ChatList">
-      <div class="ChatList-header">
-        <button onClick=${() => setState(s => ({ ...s, createModal: true }))}>＋</button>
-        <!-- <button onClick=${() => setState(s => ({ ...s, searchModal: { visible: true, global: true, query: '' } }))}>🔍</button> -->
-        <button onClick=${() => setState(s => ({ ...s, showAppSettings: true }))}>⚙️</button>
-      </div>
-      ${[ ...state.notebooks.sort((a, b) => (sortNotebook(b) - sortNotebook(a))), ...Object.values(NOTEBOOKS) ].map(notebook => html`
-        <button class="NotebookButton" key=${notebook.id} onClick=${() => setState(s => ({ ...s, selectedNotebookId: notebook.id }))}>
-          <div class="NotebookTitle">
-            <div class="NotebookEmoji" style=${{ background: notebook.color }}>${notebook.emoji}</div>
-            <h4 class="NotebookName">${notebook.name}</h4>
-          </div>
-          <div class="NotebookDescription">${escapeHtml(notebook.description) || html`<i>${STRINGS.get('No description')}</i>`}</div>
-          <div class="NotebookPreview">
-            ${Object.values(getMessages(notebook.id)).slice(-1)[0]?.text || html`<i>${STRINGS.get('No notes')}</i>`}
-          </div>
-        </button>
-      `)}
+  return <div class="ChatList">
+    <div class="ChatList-header">
+      <button onClick={() => setState(s => ({ ...s, createModal: true }))}>＋</button>
+      {/* <button onClick={() => setState(s => ({ ...s, searchModal: { visible: true, global: true, query: '' } }))}>🔍</button> */}
+      <button onClick={() => setState(s => ({ ...s, showAppSettings: true }))}>⚙️</button>
     </div>
-  `;
+    {[ ...state.notebooks.sort((a, b) => (sortNotebook(b) - sortNotebook(a))), ...Object.values(NOTEBOOKS) ].map(notebook => 
+      <button class="NotebookButton" key={notebook.id} onClick={() => setState(s => ({ ...s, selectedNotebookId: notebook.id }))}>
+        <div class="NotebookTitle">
+          <div class="NotebookEmoji" style={{ background: notebook.color }}>{notebook.emoji}</div>
+          <h4 class="NotebookName">{notebook.name}</h4>
+        </div>
+        <div class="NotebookDescription">{escapeHtml(notebook.description) || <i>{STRINGS.get('No description')}</i>}</div>
+        <div class="NotebookPreview">
+          {Object.values(getMessages(notebook.id)).slice(-1)[0]?.text || <i>{STRINGS.get('No notes')}</i>}
+        </div>
+      </button>
+    )}
+  </div>;
 }
 
 function ChatScreen({messageInputRef}) {
@@ -535,81 +530,77 @@ function ChatScreen({messageInputRef}) {
       setState(s => ({ ...s, scrollToMessageId: null }));
     }
   }, [state.scrollToMessageId, state.selectedNotebookId]);
-  return html`
-    <div class="ChatScreen">
-      <div class="ChatHeader" onClick=${() => setState(s => ({ ...s, showNotebookSettings: true }))} onKeyDown=${clickOnEnter} tabindex=0 role="button">
-        <button class="BackButton"
-          onClick=${ev => {
-            ev.stopPropagation();
-            setState(s => ({ ...s, selectedNotebookId: null, showNotebookSettings: false }));
-          }}>
-          ←
-        </button>
-        <div class="NotebookEmoji" style=${{ background: notebook.color }}>${notebook.emoji}</div>
-        <h3>${notebook.name}</h3>
-        <!-- <button class="SearchButton"
-          onClick=${ev => {
-            ev.stopPropagation();
-            setState(s => ({ ...s, searchModal: { visible: true, global: false, query: '' }}));
-          }}>
-          🔍
-        </button> -->
-      </div>
-      <div class="Messages">
-        ${messages.map(message => html`<${Message} message=${message} notebook=${notebook} ctx=${ctx} />`)}
-      </div>
-      ${!notebook.readonly && html`<div class="SendBar">
-        ${state.replyingTo && html`
-          <div class="ReplyPreview">
-            <span class="ReplyPreviewText">${STRINGS.get('Reply to')}: "${
-              getMessage(state.replyingTo.notebookId, state.replyingTo.messageId)?.text || ''
-            }"</span>
-            <button onClick=${() => setState(s => ({ ...s, replyingTo: null }))}>×</button>
-          </div>`}
-        <textarea ref=${messageInputRef} class="EditArea" autofocus onKeyDown=${ev => {
-          const hasFine = matchMedia('(pointer: fine)').matches;
-          const hasCoarse = matchMedia('(pointer: coarse)').matches;
-          const isMobile = hasCoarse && !hasFine;
-          if (!isMobile && ev.key==='Enter' && !ev.shiftKey) {
-            ev.preventDefault();
-            sendMessage();
-          }
-        }} onInput=${ev => textareaInputHandler(ev.target)} />
-        <button onClick=${sendMessage}>${state.editingMessage!=null ? STRINGS.get('Save') : STRINGS.get('Send')}</button>
-      </div>`}
+  return <div class="ChatScreen">
+    <div class="ChatHeader" onClick={() => setState(s => ({ ...s, showNotebookSettings: true }))} onKeyDown={clickOnEnter} tabindex={0} role="button">
+      <button class="BackButton"
+        onClick={ev => {
+          ev.stopPropagation();
+          setState(s => ({ ...s, selectedNotebookId: null, showNotebookSettings: false }));
+        }}>
+        ←
+      </button>
+      <div class="NotebookEmoji" style={{ background: notebook.color }}>{notebook.emoji}</div>
+      <h3>{notebook.name}</h3>
+      {/* <button class="SearchButton"
+        onClick={ev => {
+          ev.stopPropagation();
+          setState(s => ({ ...s, searchModal: { visible: true, global: false, query: '' }}));
+        }}>
+        🔍
+      </button> */}
     </div>
-  `;
+    <div class="Messages">
+      {messages.map(message => <Message message={message} notebook={notebook} />)}
+    </div>
+    {!notebook.readonly && <div class="SendBar">
+      {state.replyingTo && 
+        <div class="ReplyPreview">
+          <span class="ReplyPreviewText">{STRINGS.get('Reply to')}: "{
+            getMessage(state.replyingTo.notebookId, state.replyingTo.messageId)?.text || ''
+          }"</span>
+          <button onClick={() => setState(s => ({ ...s, replyingTo: null }))}>×</button>
+        </div>}
+      <textarea ref={messageInputRef} class="EditArea" autofocus onKeyDown={ev => {
+        const hasFine = matchMedia('(pointer: fine)').matches;
+        const hasCoarse = matchMedia('(pointer: coarse)').matches;
+        const isMobile = hasCoarse && !hasFine;
+        if (!isMobile && ev.key==='Enter' && !ev.shiftKey) {
+          ev.preventDefault();
+          sendMessage();
+        }
+      }} onInput={ev => textareaInputHandler(ev.target)} />
+      <button onClick={sendMessage}>
+        {state.editingMessage!=null ? STRINGS.get('Save') : STRINGS.get('Send')}
+      </button>
+    </div>}
+  </div>;
 }
 
 function CreateModal() {
   const {createNotebook, setState} = useContext(AppContext);
   createNotebook('local');
   return '';
-  // return html`
-  //   <div class="CreateModal">
-  //     <h3>Create Notebook</h3>
-  //     <button onClick=${() => createNotebook('local')}>Local Notebook</button>
-  //     <button onClick=${() => createNotebook('remote')}>Remote Notebook</button>
-  //     <button onClick=${() => setState(s => ({ ...s, createModal: false }))}>Cancel</button>
-  //   </div>
-  // `;
+  // return <div class="CreateModal">
+  //   <h3>Create Notebook</h3>
+  //   <button onClick=${() => createNotebook('local')}>Local Notebook</button>
+  //   <button onClick=${() => createNotebook('remote')}>Remote Notebook</button>
+  //   <button onClick=${() => setState(s => ({ ...s, createModal: false }))}>Cancel</button>
+  // </div>;
 }
 
 function CrossReplyModal() {
   const {state, setState} = useContext(AppContext);
-  return html`
-    <div class="CrossReplyModal">
-      <h3>${STRINGS.get('Reply in Another Notebook')}</h3>
-      ${state.notebooks.filter(notebook => notebook.id!==state.crossReplySource.notebookId).map(notebook => html`
-        <button onClick=${() => setState(s => ({ ...s,
-          selectedNotebookId: notebook.id,
-          replyingTo: s.crossReplySource,
-          crossReplyModal: false,
-        }))}>${notebook.emoji} ${notebook.name}</button>
-      `)}
-      <button onClick=${() => setState(s => ({ ...s, crossReplyModal: false }))}>${STRINGS.get('Cancel')}</button>
-    </div>
-  `;
+  return <div class="CrossReplyModal">
+    <h3>{STRINGS.get('Reply in Another Notebook')}</h3>
+    {state.notebooks.filter(notebook => notebook.id!==state.crossReplySource.notebookId).map(notebook => 
+      <button onClick={() => setState(s => ({ ...s,
+        selectedNotebookId: notebook.id,
+        replyingTo: s.crossReplySource,
+        crossReplyModal: false,
+      }))}>{notebook.emoji} {notebook.name}</button>
+    )}
+    <button onClick={() => setState(s => ({ ...s, crossReplyModal: false }))}>{STRINGS.get('Cancel')}</button>
+  </div>;
 }
 
 function ContextMenu() {
@@ -639,19 +630,17 @@ function ContextMenu() {
         return setFinalState();
     }
   };
-  return html`
-    <div class="ContextMenu" style=${`left: ${state.contextMenu.x}px; top: ${state.contextMenu.y}px;`} tabindex=-1>
-      <button class="ContextMenuItem" onClick=${() => handle('copy')}>📜 ${STRINGS.get('Copy to Clipboard')}</button>
-      ${!notebook.readonly && html`
-        <button class="ContextMenuItem" onClick=${() => handle('reply')}>🔁 ${STRINGS.get('Reply')}</button>
-        <button class="ContextMenuItem" onClick=${() => handle('cross-reply')}>🔂 ${STRINGS.get('Reply in Another Notebook')}</button>
-        <button class="ContextMenuItem" onClick=${() => handle('edit')}>📝 ${STRINGS.get('Edit')}</button>
-        <!--<button class="ContextMenuItem" onClick=${() => handle('move')}>📦 ${STRINGS.get('Move')}</button>-->
-        <button class="ContextMenuItem" onClick=${() => handle('datetime')}>⏰ ${STRINGS.get('Set Date/Time')}</button>
-        <button class="ContextMenuItem" onClick=${() => handle('delete')}>❌ ${STRINGS.get('Delete')}</button>
-      `}
-    </div>
-  `;
+  return <div class="ContextMenu" style={`left: ${state.contextMenu.x}px; top: ${state.contextMenu.y}px;`} tabindex={-1}>
+    <button class="ContextMenuItem" onClick={() => handle('copy')}>📜 {STRINGS.get('Copy to Clipboard')}</button>
+    {!notebook.readonly && <>
+      <button class="ContextMenuItem" onClick={() => handle('reply')}>🔁 {STRINGS.get('Reply')}</button>
+      <button class="ContextMenuItem" onClick={() => handle('cross-reply')}>🔂 {STRINGS.get('Reply in Another Notebook')}</button>
+      <button class="ContextMenuItem" onClick={() => handle('edit')}>📝 {STRINGS.get('Edit')}</button>
+      {/* <button class="ContextMenuItem" onClick={() => handle('move')}>📦 {STRINGS.get('Move')}</button> */}
+      <button class="ContextMenuItem" onClick={() => handle('datetime')}>⏰ {STRINGS.get('Set Date/Time')}</button>
+      <button class="ContextMenuItem" onClick={() => handle('delete')}>❌ {STRINGS.get('Delete')}</button>
+    </>}
+  </div>;
 }
 
 function DateTimeModal() {
@@ -668,14 +657,14 @@ function DateTimeModal() {
       setState(s => ({ ...s, dateTimeModal: null }));
     }
   };
-  return html`
-    <div class="DateTimeModal">
-      <h3>${STRINGS.get('Set Date/Time')}</h3>
-      <input type="datetime-local" value=${dt} onChange=${ev => setDt(ev.target.value)}/>
-      <button onClick=${save}>${STRINGS.get('Save')}</button>
-      <button onClick=${() => setState(s => ({ ...s, dateTimeModal: null }))}>${STRINGS.get('Cancel')}</button>
-    </div>
-  `;
+  return <div class="DateTimeModal">
+    <h3>{STRINGS.get('Set Date/Time')}</h3>
+    <input type="datetime-local" value={dt} onChange={ev => setDt(ev.target.
+// @ts-ignore
+    value)}/>
+    <button onClick={save}>{STRINGS.get('Save')}</button>
+    <button onClick={() => setState(s => ({ ...s, dateTimeModal: null }))}>{STRINGS.get('Cancel')}</button>
+  </div>;
 }
 
 function SearchModal() {
@@ -686,43 +675,40 @@ function SearchModal() {
     : (state.messages[state.selectedNotebookId] || []).map(message => ({ ...message, notebook: getNotebook(state.selectedNotebookId) }))
   ).filter(message => message.text.toLowerCase().includes(query.toLowerCase()));
   const select = (notebookId, messageId) => setState(s => ({ ...s, selectedNotebookId: notebookId, searchModal: { ...s.searchModal, visible: false }, scrollToMessageId: messageId }));
-  return html`
-    <div class="SearchModal">
-      <h3>${global ? 'Global' : 'Notebook'} Search</h3>
-      <input placeholder="Search..." value=${query} onInput=${ev => setState(s => ({ ...s, searchModal: { ...s.searchModal, query: ev.target.value }}))}/>
-      ${results.map(result => html`
-        <div class="SearchResult" onClick=${() => select(result.notebook.id, result.id)}>
-          ${global && html`<div class="NotebookTitle">
-            <div class="NotebookEmoji" style=${{ background: result.notebook.color }}>${result.notebook.emoji}</div>
-            <strong>${result.notebook.name}</strong>
-          </div>`}
-          <div>${result.text}</div><em>${new Date(result.created).toLocaleString()}</em>
-        </div>
-      `)}
-      <button onClick=${() => setState(s => ({ ...s, searchModal: { ...s.searchModal, visible: false }}))}>${STRINGS.get('Close')}</button>
-    </div>
-  `;
+  return <div class="SearchModal">
+    <h3>{global ? 'Global' : 'Notebook'} Search</h3>
+    <input placeholder="Search..." value={query} onInput={ev => setState(s => ({ ...s, searchModal: { ...s.searchModal, query: ev.target.
+// @ts-ignore
+    value }}))}/>
+    {results.map(result => 
+      <div class="SearchResult" onClick={() => select(result.notebook.id, result.id)}>
+        {global && <div class="NotebookTitle">
+          <div class="NotebookEmoji" style={{ background: result.notebook.color }}>{result.notebook.emoji}</div>
+          <strong>{result.notebook.name}</strong>
+        </div>}
+        <div>{result.text}</div><em>{new Date(result.created).toLocaleString()}</em>
+      </div>
+    )}
+    <button onClick={() => setState(s => ({ ...s, searchModal: { ...s.searchModal, visible: false }}))}>{STRINGS.get('Close')}</button>
+  </div>;
 }
 
-window.ModalHeader = function ModalHeader({title, children}) {
-  return html`<div class="ModalHeader">
-    <h3>${STRINGS.get(title)}</h3>
-    ${children}
-  </div>`;
+export function ModalHeader({title, children}) {
+  return <div class="ModalHeader">
+    <h3>{STRINGS.get(title)}</h3>
+    {children}
+  </div>;
 }
 
-window.SchemaForm = function SchemaForm({schema, children}) {
-  return html`<${SchemaContext.Provider} value=${schema}>${children}<//>`;
+export function SchemaForm({schema, children}) {
+  return <SchemaContext.Provider value={schema}>
+    {children}
+  </SchemaContext.Provider>;
 }
 
-window.SchemaField = function SchemaField(props) {
+export function SchemaField(props) {
   const schema = useContext(SchemaContext).properties[props.name];
-  const elem = (props.type === 'textarea' ? html`<textarea><//>` : html`<input />`);
+  const elem = (props.type === 'textarea' ? <textarea></textarea> : <input />);
   Object.assign(elem.props, props, schema);
   return elem;
 }
-
-document.querySelector('body > noscript')?.remove();
-render(html`<${App} />`, document.body);
-
-};

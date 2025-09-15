@@ -1,7 +1,15 @@
-# WhichNot
+# `create-preact`
 
-WhichNot is an experimental offline-first note-taking application, aimed at recreating the look-and-feel and ease of use of a standard messaging app.
+<h2 align="center">
+  <img height="256" width="256" src="./src/assets/preact.svg">
+</h2>
 
-**Try and use it now at <https://whichnot.octt.eu.org/>!** (Includes a demo notebook with more info about the app.)
+<h3 align="center">Get started using Preact and Vite!</h3>
 
-![App screenshot](https://octospacc.altervista.org/wp-content/uploads/2025/04/image-22.png)
+## Getting Started
+
+-   `npm run dev` - Starts a dev server at http://localhost:5173/
+
+-   `npm run build` - Builds for production, emitting to `dist/`
+
+-   `npm run preview` - Starts a server at http://localhost:4173/ to test production build locally
